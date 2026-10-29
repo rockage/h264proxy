@@ -284,7 +284,7 @@ func (s *Stream) txError() error {
 func (s *Stream) onAck(a *muxproto.Ack) {
 	now := time.Now()
 	var resend []*retxEntry
-	var samples []time.Duration
+	var newestSample time.Time
 	failed := false
 	s.txmu.Lock()
 	if a.CumAck > s.sendCumAck {
@@ -301,13 +301,18 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 		if seq < a.CumAck || inRanges(seq, a.Ranges) {
 			// Karn's algorithm: only unretransmitted frames yield a clean RTT.
 			if e.tries == 1 {
-				samples = append(samples, now.Sub(e.firstSent))
+				if e.firstSent.After(newestSample) {
+					newestSample = e.firstSent
+				}
 			}
 			ackedBytes += int64(e.dataLen)
 			delete(s.retx, seq)
 			continue
 		}
-		if seq < maxReported && now.Sub(e.lastSent) >= minRetxInterval {
+		// Require three later sequence numbers as loss evidence. One later
+		// packet can simply be reordered; it must not halve the whole session's
+		// congestion window. Tail losses remain covered by the RTO timer.
+		if maxReported > seq && maxReported-seq > 3 && now.Sub(e.lastSent) >= minRetxInterval {
 			if e.tries >= maxRetries {
 				s.txErr = ErrPeerUnreachable
 				failed = true
@@ -321,8 +326,11 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 	}
 	s.txmu.Unlock()
 
-	for _, r := range samples {
-		s.sess.rtt.sample(r)
+	// One ACK is one timing observation, regardless of how many frames it
+	// covers. Sampling every frame in random map order artificially erases
+	// RTT variation and can cause premature RTOs on real networks.
+	if !newestSample.IsZero() {
+		s.sess.rtt.sample(now.Sub(newestSample))
 	}
 	s.sess.cong.onAck(ackedBytes)
 	if len(resend) > 0 {

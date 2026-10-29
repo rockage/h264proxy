@@ -354,3 +354,12 @@ system DNS, recover hostnames from IPs, or control DNS in other applications.
 Validation passed: `go test -race ./...`, `go vet ./...`, `go build ./...`,
 `bash -n scripts/chrome_proxy.command` and `git diff --check`. Rebuilt the Mac
 client; a running old process must be restarted to enable the new default.
+
+## First transport performance corrections — 2026-10-30
+
+Saved the usable version before editing as local commit `ae44556` and annotated
+tag `stable-pre-performance-20261030`. Corrected pacing timer credit, batched
+ACK RTT sampling and premature fast retransmit on mild reordering. Full race
+tests, vet, builds and added transport regression tests passed. WAN A/B results,
+including rejected experiments and measurement limits, are recorded in
+[PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md).

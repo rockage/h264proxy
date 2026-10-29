@@ -526,12 +526,27 @@ func (p *pacer) wait(n int) {
 	if p.rate <= 0 {
 		return
 	}
+	if delay := p.schedule(n, time.Now()); delay > 0 {
+		time.Sleep(delay)
+	}
+}
+
+// Keep timer oversleep as pacing credit, bounded to eight DATA frames. Resetting
+// the deadline after every late wake discards that credit and can turn a
+// microsecond packet interval into one OS timer tick per packet. The bound
+// prevents an idle sender from accumulating an unbounded catch-up burst.
+func (p *pacer) schedule(n int, now time.Time) time.Duration {
+	if p.rate <= 0 {
+		return 0
+	}
+	burst := time.Duration(float64(8*(MaxChunk+128)) / float64(p.rate) * float64(time.Second))
+	if earliest := now.Add(-burst); p.next.Before(earliest) {
+		p.next = earliest
+	}
 	delay := time.Duration(float64(n) / float64(p.rate) * float64(time.Second))
 	p.next = p.next.Add(delay)
-	now := time.Now()
 	if p.next.After(now) {
-		time.Sleep(p.next.Sub(now))
-	} else {
-		p.next = now
+		return p.next.Sub(now)
 	}
+	return 0
 }
