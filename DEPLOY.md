@@ -1,5 +1,15 @@
 # Real-network deployment & performance test
 
+For a new gateway installation, use the generic **[one-command installer](INSTALL.md)**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh | bash
+```
+
+The rest of this document describes the earlier manual file/mux performance
+tests. Their signaling/media port choices are independent of the installer,
+which defaults to port 9300 for both TCP signaling and UDP media.
+
 Server on a public-IP Linux VPS, client on your Mac. The performance script
 detects the VPS architecture over SSH and cross-compiles static binaries into
 `dist/linux-amd64/` or `dist/linux-arm64/` — no Go needed on the server.

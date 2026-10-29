@@ -1,5 +1,31 @@
 # H264TunnelLab
 
+## Install the gateway on a Linux VPS
+
+Run as root on a Linux **systemd** server (amd64 or arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh | bash
+```
+
+For a regular administrator account, pipe to `sudo bash` instead. The installer
+detects the public IPv4, builds natively, installs/reuses Go, preserves existing
+keys, configures a systemd service and opens **9300/TCP + 9300/UDP** in an active
+firewalld/UFW. Allow both protocols in your cloud security group too.
+
+Custom address/port:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh \
+  | bash -s -- --public-ip YOUR_PUBLIC_IPV4 --port 9300
+```
+
+See **[INSTALL.md](INSTALL.md)** for supported systems, updates, rollback,
+firewall behavior, key retrieval and client connection instructions. This is a
+single-client TCP gateway; installing it does not add automatic client reconnect.
+
+---
+
 A proof-of-concept that carries arbitrary, AEAD-encrypted binary data inside a
 **real WebRTC session** whose SDP negotiates the **H.264** video codec. The
 payload bytes are *not* a valid H.264 bitstream and are never meant to be

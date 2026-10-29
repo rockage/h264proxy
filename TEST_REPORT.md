@@ -300,3 +300,30 @@ Added `scripts/chrome_proxy.command` as an explicit SOCKS5 test-browser launcher
 Also fixed a launchd stop/start race where a job could disappear between querying
 and unloading it, and wait for the previous launcher's lock cleanup on restart.
 The client's SOCKS listener and Chrome proxy selection are left enabled.
+
+## One-command Linux installer — 2026-10-30
+
+Added the self-contained root `install.sh` and `INSTALL.md`. Eight isolated
+Python unittest cases passed, covering fresh/repeated installation, preserving
+keys/configuration, private Go bootstrap and actual checksum rejection, build
+failure, occupied ports, service validation/health rollback, firewalld/UFW,
+disabled firewall management, low-port capability and invalid arguments.
+`bash -n install.sh`, `git diff --check`, `go test -race ./...`, `go vet ./...`
+and `go build ./...` passed.
+
+Real-host verification used a separate service/account and port 19300 on the
+Rocky Linux 10.2 ARM64 VPS, with SELinux Enforcing and active firewalld.
+Forced the no-existing-Go path: downloaded the official Go 1.27.3 ARM64 archive,
+verified its SHA-256 and built gateway/key generator natively from source commit
+`5571134c20ffbff0c1ca5bd5d1229dc654b84e3a`. The installer enabled and started
+the non-root systemd service and opened both protocols in runtime/permanent
+firewall configuration. A temporary Mac SOCKS client on port 11080 established
+H.264-negotiated WebRTC; HTTPS to api.ipify.org returned the VPS public IP.
+
+A second installation without IP/port arguments preserved the key and
+configuration byte for byte. An injected post-start failure while changing to
+port 19301 restored the previous binary, key, configuration and unit hashes,
+left the old service active/enabled, removed only the newly added 19301 rules
+and retained 19300 rules. The production 9300 service retained its original PID
+throughout these tests. Disposable test services, accounts and firewall rules
+were removed afterward. No Ubuntu/amd64 live installation is claimed.

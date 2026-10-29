@@ -34,6 +34,9 @@ with Ctrl-C; active sockets and streams are canceled and the process exits.
 
 ## VPS deployment
 
+For a fresh server, use **[INSTALL.md](INSTALL.md)** for the native one-command
+installer, persistent service and host-firewall setup. Manual build steps follow.
+
 First check `ssh "$SSH" uname -m`. The supplied test VPS is aarch64, requiring
 `GOARCH=arm64`. Use `amd64` for x86_64 hosts.
 

@@ -26,3 +26,7 @@ wrong.bin
 
 # OS cruft
 .DS_Store
+
+# Installer test bytecode
+__pycache__/
+*.py[cod]
