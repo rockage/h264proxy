@@ -327,3 +327,30 @@ left the old service active/enabled, removed only the newly added 19301 rules
 and retained 19300 rules. The production 9300 service retained its original PID
 throughout these tests. Disposable test services, accounts and firewall rules
 were removed afterward. No Ubuntu/amd64 live installation is claimed.
+
+## Remote DNS enforcement — 2026-10-30
+
+Diagnosed the current Mac-to-207.148.110.180 session using server logs and
+paired curl checks: Google HTTPS with SOCKS5 hostname resolution returned
+HTTP 200, while local resolution timed out. The Mac resolver returned
+174.132.167.252 for www.google.com; that address also dominated gateway dial
+timeouts. The VPS could resolve and connect to Google directly. This supports
+local DNS interference rather than a failed WebRTC tunnel.
+
+The proxy command now defaults to `-remote-dns-only=true`. Tests verify local
+rejection with protocol-correct replies before any mux stream opens for SOCKS4,
+SOCKS5 IPv4/IPv6 and IP literals disguised as domain requests. Domain requests
+over SOCKS5 and SOCKS4a retain relay and half-close behavior over the lossy mux
+fixture. The real two-process WebRTC integration test now checks the command's
+default IP rejection and transfers four concurrent HTTP payloads using hostnames.
+Explicit `-remote-dns-only=false` retains the original literal-IP behavior;
+existing library compatibility tests still exercise that behavior.
+
+The Mac Chrome helper uses explicit SOCKS5 and Chromium host resolver rules in
+a separate profile, reuses the running local client and no longer starts a
+launcher targeting the old developer VPS. Shell syntax was checked; this change
+does not claim an automated visual browser acceptance test. It does not change
+system DNS, recover hostnames from IPs, or control DNS in other applications.
+Validation passed: `go test -race ./...`, `go vet ./...`, `go build ./...`,
+`bash -n scripts/chrome_proxy.command` and `git diff --check`. Rebuilt the Mac
+client; a running old process must be restarted to enable the new default.

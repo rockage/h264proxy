@@ -13,6 +13,14 @@
 - 用户名 / 密码：留空
 - 域名解析：选择通过 SOCKS5 / 代理解析（如果软件提供该选项）
 
+客户端现在默认开启 `-remote-dns-only=true`，拒绝已经由本地解析成 IP 的请求，
+日志事件为 `local_dns_rejected`。域名请求由 VPS 解析；SOCKS4a 可用，普通 SOCKS4
+需要显式关闭此策略。Chrome SOCKS5 无需额外 DNS 开关。
+
+连接自己的 VPS 后，可以执行 `bash scripts/chrome_proxy.command` 打开独立浏览器
+窗口，强制 SOCKS5 并禁用本地目标域名解析。该浏览器脚本只复用已运行的本机
+1080 客户端，不再自动启动连接开发者 VPS 的旧脚本。
+
 终端测试命令：
 
 ```bash

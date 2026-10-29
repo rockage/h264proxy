@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -27,6 +29,19 @@ type request struct {
 	address string
 	wire    []byte
 }
+
+func requireRemoteDNS(req request) error {
+	host, _, err := net.SplitHostPort(req.address)
+	if err != nil {
+		return err
+	}
+	_, ipErr := netip.ParseAddr(strings.TrimSuffix(host, "."))
+	if len(req.wire) < 4 || req.wire[3] != 3 || ipErr == nil {
+		return &protocolError{addressUnsupported, "remote DNS required: send a hostname using SOCKS5 or SOCKS4a; IP-only/SOCKS4 requests cannot recover the original hostname (use -remote-dns-only=false only for intentional IP connections)"}
+	}
+	return nil
+}
+
 type protocolError struct {
 	code byte
 	msg  string

@@ -68,10 +68,15 @@ kind 6 to protocol v2. The v1 file protocol is unchanged.
 ## Supported behavior
 
 - SOCKS5 no-authentication method, TCP CONNECT only.
-- SOCKS4/4a ingress compatibility on the same port. SOCKS4 IPv4 requests and
+- Default command policy is `-remote-dns-only=true`: accept hostname requests
+  (SOCKS5 or SOCKS4a) and reject IP-only requests before opening a mux stream.
+  Original names cannot reliably be recovered from already resolved IPs.
+  `-remote-dns-only=false` explicitly restores direct-IP compatibility.
+- SOCKS4/4a ingress parsing on the same port. SOCKS4 IPv4 requests and
   SOCKS4a domain requests are converted to the same reliable SOCKS5 CONNECT
   record inside the tunnel, so gateways need no compatibility update.
-- IPv4, IPv6 and domain destinations. Domain names are sent unchanged through
+- IPv4/IPv6 literals when explicitly allowed, and domain destinations by default.
+  Domain names are sent unchanged through
   encrypted DATA and resolved by the gateway; IPv6 targets work even though
   the underlying ICE transport currently uses IPv4.
 - Concurrent connections share one WebRTC session and use distinct mux streams.

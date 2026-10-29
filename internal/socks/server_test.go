@@ -58,7 +58,7 @@ func (p *packetPipe) ReadPayload() ([]byte, bool, error) {
 	}
 }
 
-func proxyPair(t *testing.T, idle time.Duration) (string, *mux.Session, *mux.Session) {
+func proxyPair(t *testing.T, idle time.Duration, options ...func(*Config)) (string, *mux.Session, *mux.Session) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &packetPipe{ch: make(chan []byte, 8192), done: make(chan struct{})}
@@ -78,6 +78,9 @@ func proxyPair(t *testing.T, idle time.Duration) (string, *mux.Session, *mux.Ses
 		t.Fatal(e)
 	}
 	cfg := Config{HandshakeTimeout: 2 * time.Second, DialTimeout: time.Second, IdleTimeout: idle, Log: log}
+	for _, option := range options {
+		option(&cfg)
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); ServeGateway(ctx, l, cfg) }()

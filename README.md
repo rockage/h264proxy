@@ -24,6 +24,13 @@ See **[INSTALL.md](INSTALL.md)** for supported systems, updates, rollback,
 firewall behavior, key retrieval and client connection instructions. This is a
 single-client TCP gateway; installing it does not add automatic client reconnect.
 
+The client defaults to **remote DNS only**: SOCKS5/SOCKS4a hostnames are resolved
+by the gateway; IP-only requests (including plain SOCKS4) are rejected to avoid
+silently forwarding locally polluted DNS results. Explicit IP use requires
+`-remote-dns-only=false`. On macOS, start your client, then run
+`bash scripts/chrome_proxy.command` for a separate Chrome profile with explicit
+SOCKS5 and local target DNS disabled. See [INSTALL.md](INSTALL.md).
+
 ---
 
 A proof-of-concept that carries arbitrary, AEAD-encrypted binary data inside a

@@ -13,6 +13,9 @@ import (
 )
 
 type Config struct {
+	// RequireDomain rejects IP-only ingress requests: their original hostname
+	// is unavailable and cannot safely be recovered after local DNS resolution.
+	RequireDomain    bool
 	HandshakeTimeout time.Duration
 	DialTimeout      time.Duration
 	IdleTimeout      time.Duration
@@ -93,6 +96,15 @@ func serveClient(ctx context.Context, conn net.Conn, sess *mux.Session, cfg Conf
 			_ = writeAll(conn, reply(pe.code, nil))
 		}
 		return err
+	}
+	if cfg.RequireDomain {
+		if err := requireRemoteDNS(req); err != nil {
+			_ = writeAll(conn, clientReply(version, addressUnsupported, nil))
+			if cfg.Log != nil {
+				cfg.Log.Warn("local_dns_rejected", "protocol", version, "error", err.Error())
+			}
+			return err
+		}
 	}
 	st, err := sess.OpenStream()
 	if err != nil {

@@ -25,6 +25,7 @@ func main() {
 	role := flag.String("role", "", "gateway or client (required)")
 	httpAddr := flag.String("http", "127.0.0.1:9300", "gateway signaling bind / client remote address")
 	socksAddr := flag.String("socks", "127.0.0.1:1080", "client SOCKS5/SOCKS4(a) listening address (no authentication)")
+	remoteDNS := flag.Bool("remote-dns-only", true, "client: require hostnames resolved at the gateway; reject IP-only/SOCKS4 requests")
 	keyPath := flag.String("key", "build/key.bin", "32-byte shared key file")
 	netMode := flag.Bool("net", false, "use real-network ICE instead of loopback")
 	publicIP := flag.String("public-ip", "", "gateway public IP candidate")
@@ -56,7 +57,7 @@ func main() {
 	err = run(ctx, *role, *socksAddr, *keyPath, *report, *setup, tunnel.Config{
 		HTTP: *httpAddr, Rate: *rate, Log: log,
 		RTC: rtc.Options{Network: *netMode, PublicIP: *publicIP, UDPPort: *udpPort, STUNServers: splitCSV(*stun)},
-	}, socks.Config{HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log})
+	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log})
 	stop()
 	if err != nil {
 		log.Error("fatal", "error", err.Error())
@@ -115,6 +116,7 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 		}
 		defer ln.Close()
 		cfg.Log.Info("socks_listening", "addr", ln.Addr().String())
+		cfg.Log.Info("dns_policy", "remote_dns_only", sc.RequireDomain, "resolver", "gateway")
 		err = socks.Serve(ctx, ln, peer.Session, sc)
 	}
 	if socks.NormalStop(err) && parent.Err() != nil {

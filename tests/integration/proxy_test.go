@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -98,6 +99,13 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 		w.Write(body)
 	}))
 	defer target.Close()
+	// The command defaults to remote DNS only: an already resolved IP must
+	// fail locally, while a hostname traverses the real WebRTC tunnel.
+	if c, err := dialer.Dial("tcp", target.Listener.Addr().String()); err == nil {
+		c.Close()
+		t.Fatal("default client accepted an IP-only CONNECT")
+	}
+	targetURL := strings.Replace(target.URL, "127.0.0.1", "localhost", 1)
 	transport := &http.Transport{DialContext: dialer.(proxy.ContextDialer).DialContext, DisableKeepAlives: true}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 20 * time.Second}
@@ -108,7 +116,7 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			body := bytes.Repeat([]byte{byte(i + 1)}, 300*1024)
-			resp, e := client.Post(target.URL, "application/octet-stream", bytes.NewReader(body))
+			resp, e := client.Post(targetURL, "application/octet-stream", bytes.NewReader(body))
 			if e != nil {
 				errs <- e
 				return
@@ -150,7 +158,8 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 			c.Write(append([]byte("after-fin:"), b...))
 		}
 	}()
-	stream, e := dialer.Dial("tcp", fin.Addr().String())
+	_, finPort, _ := net.SplitHostPort(fin.Addr().String())
+	stream, e := dialer.Dial("tcp", net.JoinHostPort("localhost", finPort))
 	if e != nil {
 		t.Fatal(e)
 	}

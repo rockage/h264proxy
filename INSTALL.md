@@ -108,7 +108,25 @@ go build -o proxy ./cmd/proxy
   -stun stun:stun.l.google.com:19302
 ```
 
-浏览器设置为 SOCKS5 `127.0.0.1:1080`，不填写账号密码。入口也兼容 SOCKS4/4a。
+浏览器设置为 SOCKS5 `127.0.0.1:1080`，不填写账号密码。客户端默认启用
+`-remote-dns-only=true`：只接收携带域名的 SOCKS5 / SOCKS4a 请求，把域名原样送到
+VPS 后解析；拒绝 SOCKS4 和已经在本地解析为 IP 的请求。请求若已丢失域名，代理
+无法可靠还原它，不会尝试反向 DNS 猜测。直接访问 IP 的程序需要显式加
+`-remote-dns-only=false`，这也会恢复普通 SOCKS4 兼容，但不能防止本地 DNS 污染。
+
+Chrome 的 SOCKS5 本身采用代理端域名解析，不需要扩展提供 DNS 开关。如果扩展
+实际使用 SOCKS4、PAC 中有本地解析或其他配置干扰，可在客户端运行后执行：
+
+```bash
+bash scripts/chrome_proxy.command
+```
+
+这个脚本复用已经运行的 `127.0.0.1:1080` 客户端，打开独立 Chrome 配置，强制
+SOCKS5，并用 `--host-resolver-rules` 禁用本地目标域名解析。它不重启网关、不修改
+系统 DNS、不自动连接开发者 VPS，也不安装扩展。请使用它打开的专用窗口；其他
+Chrome 窗口保持原有设置。相关行为见 [Chromium 代理文档](https://github.com/chromium/chromium/blob/main/net/docs/proxy.md)
+和 [SOCKS 启动参数说明](https://chromium.googlesource.com/playground/chromium-org-site/+/refs/heads/main/developers/design-documents/network-stack/socks-proxy.md)。
+
 验证出口：
 
 ```bash
