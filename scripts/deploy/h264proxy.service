@@ -1,0 +1,26 @@
+[Unit]
+Description=H264Proxy WebRTC SOCKS5 Gateway
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=h264proxy
+Group=h264proxy
+WorkingDirectory=/opt/h264proxy
+EnvironmentFile=/etc/h264proxy/gateway.env
+ExecStart=/opt/h264proxy/bin/proxy -role gateway -net -public-ip ${PUBLIC_IP} -udp-port ${UDP_PORT} -http ${HTTP_ADDR} -key /etc/h264proxy/key.bin -connect-timeout 24h -report /var/lib/h264proxy/gateway-report.json
+Restart=always
+RestartSec=2
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/h264proxy
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
