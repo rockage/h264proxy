@@ -1,0 +1,28 @@
+# Build output
+/bin/
+/build/
+/dist/
+
+# Runtime artifacts
+*.log
+*_report.json
+/cliA.json
+/srvA.json
+/muxcli.json
+/muxsrv.json
+/recv*.bin
+*.part
+
+# Local archives may contain old binaries or secrets
+*.zip
+*.tar.gz
+
+# Secrets & local test data
+/testdata/*.bin
+/testdata/*.txt
+*.key
+key.bin
+wrong.bin
+
+# OS cruft
+.DS_Store
