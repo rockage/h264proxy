@@ -36,6 +36,14 @@ silently forwarding locally polluted DNS results. Explicit IP use requires
 `bash scripts/chrome_proxy.command` for a separate Chrome profile with explicit
 SOCKS5 and local target DNS disabled. See [INSTALL.md](INSTALL.md).
 
+An optional **macOS TUN frontend** now connects ordinary application TCP traffic
+to the same SOCKS/WebRTC gateway. Build with `bash scripts/build_tun.sh`, then
+run `H264_TUN_SERVICE=Ethernet bash scripts/start_tun.sh` (use your active
+network service). It requires sudo, forwards system DNS over HTTPS through the
+tunnel, and restores routes/DNS on exit. Generic UDP is not supported. TUN mode
+accepts destination IPs; the SOCKS-only default DNS policy remains unchanged.
+See **[TUN.md](TUN.md)** for setup, recovery, limitations and verification status.
+
 ---
 
 ## Historical H.264 experiments

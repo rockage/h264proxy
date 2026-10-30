@@ -468,9 +468,10 @@ func (s *Session) maintain() {
 			}
 			s.streamsMu.Unlock()
 
-			// Resend the receiver's window/ACK heartbeat every ~200ms so a lost
-			// WINDOW or ACK cannot stall a live transfer.
-			heartbeat := ticks%4 == 0
+			// RTP needs periodic recovery of lost ACK/WINDOW frames. SCTP
+			// already delivers these reliably: idle-stream heartbeats just fill
+			// the shared writer queue and delay new connections and DNS.
+			heartbeat := !s.cfg.ReliableTransport && ticks%4 == 0
 			for _, st := range streams {
 				if !s.cfg.ReliableTransport {
 					st.retransmitDue(now)

@@ -137,8 +137,9 @@ curl --noproxy '' --socks5-hostname 127.0.0.1:1080 https://api.ipify.org
 ```
 
 `YOUR_SERVER:9300` 是信令地址；若安装时改了端口，客户端也要同步修改。
-本仓库的 Mac 便捷脚本最初针对开发者测试 VPS 配置。连接自己的 VPS 请用上面的通用命令，
-或为脚本设置 `H264_SSH`、`H264_ENDPOINT`、`H264_KEY` 等相应变量。
+Mac 便捷脚本不再默认连接历史测试 VPS。可按 `scripts/client.env.example`
+创建本地 `build/client.env`，填写当前的 `H264_ENDPOINT`、`H264_SSH` 和匹配的
+`H264_KEY`。环境变量优先于文件；启动时会显示实际目标，缺少配置时会在 SSH 前退出。
 
 ## 更新、重复执行与参数
 

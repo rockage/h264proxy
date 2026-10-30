@@ -1,7 +1,10 @@
 # VPS 手动测试（2026-10-30）
 
-服务端在 `root@152.53.13.153`，由 VPS 原生 Go 构建；本机客户端位于
+服务端在 `root@207.148.110.180`，当前已验证 DataChannel 连接和对应出口；本机客户端位于
 `/Users/roca/H264Proxy/build/proxy`。
+
+当前地址和密钥路径从本地 `build/client.env` 读取，环境变量优先。
+脚本不再默认选择历史 VPS；本次没有替换当前服务器程序。
 
 ## 手动使用
 
@@ -27,7 +30,7 @@
 curl --noproxy '' --socks5-hostname 127.0.0.1:1080 --max-time 60 https://api.ipify.org
 ```
 
-正常应返回 VPS 的出口 IPv4：`152.53.13.153`。
+正常应返回 VPS 的出口 IPv4：`207.148.110.180`。
 
 ## 启动、停止客户端
 
@@ -65,9 +68,9 @@ firewalld 的运行时和永久配置均保留这两条规则。
 客户端会话；启动脚本的重启只影响此代理服务。
 
 ```bash
-ssh root@152.53.13.153 'systemctl status h264proxy.service --no-pager'
-ssh root@152.53.13.153 'journalctl -u h264proxy.service -n 60 --no-pager'
-ssh root@152.53.13.153 'systemctl restart h264proxy.service'
+ssh root@207.148.110.180 'systemctl status h264proxy.service --no-pager'
+ssh root@207.148.110.180 'journalctl -u h264proxy.service -n 60 --no-pager'
+ssh root@207.148.110.180 'systemctl restart h264proxy.service'
 ```
 
 远端文件：
@@ -83,21 +86,21 @@ ssh root@152.53.13.153 'systemctl restart h264proxy.service'
 Go 使用[官方发布包](https://go.dev/dl/)，下载时进行了 SHA-256 校验，安装到 `/usr/local/go`；
 服务程序本身不需要 Go 环境才能运行。
 
-本机密钥为 `build/proxy-vps.key`（仅当前用户可读），通过 scp 取回，
+本机密钥为 `build/proxy-207.148.110.180.key`（仅当前用户可读），通过 scp 取回，
 不会包含在源码包或信令中。已有 v1 性能测试用的 `key.bin` 不用于这套服务。
 
 ## 重新编译
 
 ```bash
 # VPS（更新源码后；构建失败不会覆盖正在运行的程序）
-ssh root@152.53.13.153 'cd /opt/h264proxy/src && CGO_ENABLED=0 /usr/local/go/bin/go build -trimpath -o /opt/h264proxy/bin/proxy.next ./cmd/proxy && chmod 755 /opt/h264proxy/bin/proxy.next && mv /opt/h264proxy/bin/proxy.next /opt/h264proxy/bin/proxy && restorecon /opt/h264proxy/bin/proxy && systemctl restart h264proxy.service'
+ssh root@207.148.110.180 'cd /opt/h264proxy/src && CGO_ENABLED=0 /usr/local/go/bin/go build -trimpath -o /opt/h264proxy/bin/proxy.next ./cmd/proxy && chmod 755 /opt/h264proxy/bin/proxy.next && mv /opt/h264proxy/bin/proxy.next /opt/h264proxy/bin/proxy && restorecon /opt/h264proxy/bin/proxy && systemctl restart h264proxy.service'
 
 # Mac（先停止客户端再构建）
 cd /Users/roca/H264Proxy
 go build -o build/proxy ./cmd/proxy
 ```
 
-## Chrome 使用与兼容
+## 历史：纽伦堡节点 Chrome 使用与兼容
 
 2026-10-30 排查记录：Chrome 的代理插件中 `WebRTC` 配置显示 SOCKS5，
 但实际送到客户端的握手首字节为 `0x04`（SOCKS4）。旧入口只接受

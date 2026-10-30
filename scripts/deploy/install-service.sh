@@ -2,7 +2,7 @@
 # Run on the VPS after a native build in /opt/h264proxy/src.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PUBLIC_IP="${PUBLIC_IP:-152.53.13.153}"
+PUBLIC_IP="${PUBLIC_IP:?请设置当前 VPS 的 PUBLIC_IP，不再默认使用历史测试地址}"
 PORT="${PORT:-9300}"
 if ! getent passwd h264proxy >/dev/null; then
   useradd --system --home-dir /var/lib/h264proxy --shell /sbin/nologin h264proxy

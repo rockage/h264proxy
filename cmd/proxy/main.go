@@ -18,6 +18,7 @@ import (
 	"github.com/roca/h264-tunnel-lab/internal/mux"
 	"github.com/roca/h264-tunnel-lab/internal/rtc"
 	"github.com/roca/h264-tunnel-lab/internal/socks"
+	"github.com/roca/h264-tunnel-lab/internal/tun"
 	"github.com/roca/h264-tunnel-lab/internal/tunnel"
 )
 
@@ -40,7 +41,37 @@ func main() {
 	logPath := flag.String("log", "", "optional structured log file")
 	report := flag.String("report", "", "write final mux statistics on exit")
 	statsInterval := flag.Duration("stats-interval", 5*time.Second, "log live transport counters at this interval (0=disabled)")
+	tunEnabled := flag.Bool("tun", false, "client: enable macOS TUN TCP proxy and DNS over the tunnel (requires root)")
+	tunIPv6 := flag.Bool("tun-ipv6", false, "allow AAAA/HTTPS/SVCB DNS records in TUN mode (requires working gateway IPv6)")
+	tunDevice := flag.String("tun-device", "utun123", "unused macOS utun device")
+	tunService := flag.String("tun-service", "", "active macOS network service, e.g. Wi-Fi or Ethernet (required with -tun)")
+	tunBinary := flag.String("tun2socks", "tun2socks", "path to tun2socks executable")
+	tunState := flag.String("tun-state", "/Library/Application Support/H264Proxy/tun-state.json", "absolute recovery journal path")
+	tunRecover := flag.Bool("tun-recover", false, "restore DNS/routes from -tun-state after an abnormal exit, then exit")
 	flag.Parse()
+
+	if *tunRecover {
+		if err := tun.Recover(*tunState); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("TUN DNS/routes restored")
+		return
+	}
+	tc := tun.Config{IPv6: *tunIPv6, Enabled: *tunEnabled, Device: *tunDevice, Service: *tunService, Binary: *tunBinary, StateFile: *tunState, SOCKS: *socksAddr}
+	if tc.Enabled {
+		if *role != "client" || !*netMode {
+			fmt.Fprintln(os.Stderr, "-tun requires -role client -net")
+			os.Exit(2)
+		}
+		if err := tc.Validate(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		// TUN carries destination IPs, not SOCKS hostnames. DNS is intercepted
+		// separately and sent through the tunnel by the TUN frontend.
+		*remoteDNS = false
+	}
 	if *role != "gateway" && *role != "client" {
 		fmt.Fprintln(os.Stderr, "-role must be gateway or client")
 		os.Exit(2)
@@ -58,7 +89,7 @@ func main() {
 	err = run(ctx, *role, *socksAddr, *keyPath, *report, *setup, tunnel.Config{
 		HTTP: *httpAddr, Rate: *rate, Log: log,
 		RTC: rtc.Options{Network: *netMode, PublicIP: *publicIP, UDPPort: *udpPort, STUNServers: splitCSV(*stun)},
-	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log}, *statsInterval)
+	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log}, *statsInterval, tc)
 	stop()
 	if err != nil {
 		log.Error("fatal", "error", err.Error())
@@ -69,7 +100,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, role, socksAddr, keyPath, report string, setup time.Duration, cfg tunnel.Config, sc socks.Config, statsInterval time.Duration) error {
+func run(ctx context.Context, role, socksAddr, keyPath, report string, setup time.Duration, cfg tunnel.Config, sc socks.Config, statsInterval time.Duration, tc tun.Config) error {
 	parent := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -121,7 +152,7 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 		defer ln.Close()
 		cfg.Log.Info("socks_listening", "addr", ln.Addr().String())
 		cfg.Log.Info("dns_policy", "remote_dns_only", sc.RequireDomain, "resolver", "gateway")
-		err = socks.Serve(ctx, ln, peer.Session, sc)
+		err = serveClient(ctx, ln, peer, cfg, sc, tc)
 	}
 	if socks.NormalStop(err) && parent.Err() != nil {
 		return nil
@@ -130,6 +161,47 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 		return fmt.Errorf("tunnel closed: %w", err)
 	}
 	return err
+}
+
+func serveClient(ctx context.Context, ln net.Listener, peer *tunnel.Peer, cfg tunnel.Config, sc socks.Config, tc tun.Config) (result error) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	var serveErr error
+	go func() {
+		serveErr = socks.Serve(ctx, ln, peer.Session, sc)
+		close(done)
+	}()
+	defer func() { cancel(); ln.Close(); <-done }()
+	if !tc.Enabled {
+		<-done
+		return serveErr
+	}
+	var err error
+	tc.DirectIPs, err = tun.ResolveBypass(ctx, cfg.HTTP, cfg.RTC.STUNServers, peer.RemoteIPs())
+	if err != nil {
+		return err
+	}
+	tc.Log = cfg.Log
+	m, err := tun.Start(ctx, tc)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := m.Close(); err != nil {
+			cfg.Log.Error("tun_restore_failed", "error", err.Error(), "recovery_file", tc.StateFile)
+			// Preserve cleanup failures even when the triggering error is cancellation.
+			result = fmt.Errorf("TUN restore failed: %v (client result: %v)", err, result)
+		}
+	}()
+	cfg.Log.Info("tun_ready", "device", tc.Device, "network_service", tc.Service, "dns", "DoH through SOCKS", "dns_ipv6", tc.IPv6, "udp", "unsupported", "bypass_ips", tc.DirectIPs)
+	select {
+	case <-done:
+		return serveErr
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-m.Done():
+		return fmt.Errorf("TUN forwarding stopped: %w", m.Err())
+	}
 }
 
 func logTransportStats(ctx context.Context, peer *tunnel.Peer, log *logging.Logger, interval time.Duration) {
@@ -143,7 +215,7 @@ func logTransportStats(ctx context.Context, peer *tunnel.Peer, log *logging.Logg
 		case <-sess.Closed():
 			return
 		case <-ticker.C:
-			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "buffered_amount", peer.BufferedAmount())
+			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "ice_protocol", peer.ICEProtocol(), "buffered_amount", peer.BufferedAmount(), "sctp", peer.SCTPStats())
 		}
 	}
 }

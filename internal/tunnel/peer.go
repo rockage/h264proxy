@@ -40,6 +40,39 @@ type Peer struct {
 
 func (p *Peer) BufferedAmount() uint64 { return p.wire.BufferedAmount() }
 
+// SCTPStats reports the real transport congestion/receive windows and RTT.
+// The mux's cwnd/RTT counters describe application feedback, not SCTP.
+func (p *Peer) SCTPStats() webrtc.SCTPTransportStats { return p.pc.SCTP().Stats() }
+
+func (p *Peer) ICEProtocol() string {
+	pair, err := p.pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
+	if err != nil || pair == nil {
+		return ""
+	}
+	return pair.Remote.Protocol.String()
+}
+
+// RemoteIPs returns the known ICE endpoints before a TUN changes system routes.
+// Keep all candidates reachable, including alternatives to the selected pair.
+func (p *Peer) RemoteIPs() []string {
+	seen := make(map[string]bool)
+	for _, s := range p.pc.GetStats() {
+		if c, ok := s.(webrtc.ICECandidateStats); ok && c.Type == webrtc.StatsTypeRemoteCandidate && net.ParseIP(c.IP) != nil {
+			seen[c.IP] = true
+		}
+	}
+	if s := p.pc.SCTP(); s != nil && s.Transport() != nil {
+		if pair, err := s.Transport().ICETransport().GetSelectedCandidatePair(); err == nil && pair != nil {
+			seen[pair.Remote.Address] = true
+		}
+	}
+	var ips []string
+	for ip := range seen {
+		ips = append(ips, ip)
+	}
+	return ips
+}
+
 func (p *Peer) Close() error {
 	p.once.Do(func() {
 		if p.Session != nil {
@@ -50,6 +83,7 @@ func (p *Peer) Close() error {
 			p.http.Close()
 		}
 		p.pc.Close()
+
 	})
 	return nil
 }
@@ -103,10 +137,12 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
 			connOnce.Do(func() { close(connected) })
-		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed, webrtc.PeerConnectionStateDisconnected:
+		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
 			p.wire.Close()
 			failOnce.Do(func() { close(failed) })
 		}
+		// Disconnected is recoverable while ICE checks continue. Closing SCTP
+		// here turns a brief routing change/lost keepalive into a remote abort.
 	})
 	var sid uint64
 	if cfg.Role == mux.RoleListener {
@@ -208,7 +244,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Log.Info("tunnel_ready", "transport", "datachannel-v1", "session_id", fmt.Sprintf("%016x", sid))
+	cfg.Log.Info("tunnel_ready", "transport", "datachannel-v1", "ice_protocol", p.ICEProtocol(), "session_id", fmt.Sprintf("%016x", sid))
 	go func() {
 		select {
 		case <-ctx.Done():

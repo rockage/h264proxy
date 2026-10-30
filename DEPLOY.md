@@ -22,7 +22,9 @@ Your Mac builds its own client from source (you have Go 1.27).
 Run both tests with `SSH=user@host PUBLIC_IP=host bash scripts/vps_perf.sh`.
 The script collects four JSON reports and four logs, archives previous reports
 under `build/perf-<timestamp>/`, and exits nonzero if a test or report collection
-fails. The supplied VPS `152.53.13.153` reports `aarch64` (Linux ARM64).
+fails. The historical Nuremberg VPS used Linux ARM64; the currently selected
+`207.148.110.180` reports `x86_64` (Linux AMD64). Always detect the target
+architecture instead of reusing binaries from a previous node.
 
 Fill in these first:
 

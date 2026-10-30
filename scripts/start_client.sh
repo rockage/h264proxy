@@ -2,10 +2,13 @@
 # Foreground client; SSH prepares a fresh session on the paired gateway.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REMOTE="${H264_SSH:-root@152.53.13.153}"
-ENDPOINT="${H264_ENDPOINT:-152.53.13.153:9300}"
+source "$ROOT/scripts/client_config.sh"
+h264_load_client_config "$ROOT"
+h264_require_client_target
+REMOTE="${H264_SSH:-}"
+ENDPOINT="$H264_ENDPOINT"
 SOCKS="${H264_SOCKS:-127.0.0.1:1080}"
-STUN="${H264_STUN:-stun:stun.l.google.com:19302}"
+STUN="${H264_STUN-stun:stun.l.google.com:19302}"
 KEY="${H264_KEY:-$ROOT/build/proxy-vps.key}"
 BIN="$ROOT/build/proxy"
 PIDFILE="$ROOT/build/proxy-client.pid"
@@ -46,7 +49,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 # The current gateway pairs with one client. Restart it for a fresh SDP session.
 echo "准备 VPS 网关会话：$REMOTE"
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" 'systemctl restart h264proxy.service'
+if [[ "${H264_RESTART_GATEWAY:-1}" == 1 ]]; then
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" 'systemctl restart h264proxy.service'
+fi
 echo "启动 SOCKS5：${SOCKS}（此窗口保持运行；Ctrl-C 停止）"
 "$BIN" -role client -net -http "$ENDPOINT" -stun "$STUN" \
   -key "$KEY" -socks "$SOCKS" -connect-timeout 60s \

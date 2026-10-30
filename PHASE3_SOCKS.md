@@ -53,11 +53,11 @@ in [DEPLOY.md](DEPLOY.md); it never goes through signaling HTTP. Open
 
 ```bash
 # VPS
-/tmp/h264proxy/proxy -role gateway -net -public-ip 152.53.13.153 \
+/tmp/h264proxy/proxy -role gateway -net -public-ip YOUR_VPS_IPV4 \
   -udp-port 9301 -http 0.0.0.0:9300 -key /tmp/h264proxy/key.bin
 
 # Mac (same key contents as the VPS)
-build/proxy -role client -net -http 152.53.13.153:9300 \
+build/proxy -role client -net -http YOUR_VPS_IPV4:9300 \
   -stun stun:stun.l.google.com:19302 -key ./key.bin \
   -socks 127.0.0.1:1080
 ```
