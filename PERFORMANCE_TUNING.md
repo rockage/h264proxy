@@ -26,3 +26,27 @@ Increasing the RTO floor to 200ms and lowering the fixed rate ceiling did not im
 `go test -race ./...`, `go vet ./...`, `go build ./...`, `git diff --check` passed. Added deterministic tests for timer credit/rate bounds, mild reordering vs fast retransmit, duplicate ACKs, ACK batching and Karn sampling. Existing induced-loss, half-close and two-process WebRTC proxy tests passed. Raw reports are local ignored artifacts under `build/perf-tuning/`.
 
 These changes require updating both endpoints to affect both directions. Do not disable congestion control or ARQ to raise a benchmark score.
+
+
+## Deployment and HTTP smoke checks
+
+Deployed source commit `0866f63` on both endpoints after the comparisons. The
+VPS passed native Go mux tests and native Linux/amd64 compilation. Saved its
+old binary as `/opt/h264proxy/bin/proxy.preperf-20261030`, the old Mac binary
+as `build/perf-tuning/proxy-before`, and retained the source checkpoint tag.
+No key or firewall persistence changes were made; temporary test rules and
+remote test files were removed. The gateway and local SOCKS listener are active.
+
+Using the same Cloudflare HTTPS download endpoint through production SOCKS:
+
+| Check | Time | Average payload speed |
+| --- | ---: | ---: |
+| Before update, 1,000,000 bytes | 6.005 s | 166,529 B/s |
+| After update, 1,000,000 bytes | 1.291 s | 774,724 B/s |
+| After update, 5,000,000 bytes | 24.428 s | 204,683 B/s |
+
+All returned HTTP 200; an additional SOCKS HTTPS IP check returned the correct
+VPS address. These results show improved short-transfer behavior but also show
+that sustained throughput is still low. A 4.6x short-transfer observation must
+not be represented as a sustained speed multiplier. Stable 1080P playback has
+not been verified. The updated client was left running for manual testing.
