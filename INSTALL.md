@@ -5,6 +5,9 @@ Ubuntu/Debian、Rocky/AlmaLinux/RHEL/CentOS Stream 和 Fedora 的 apt/dnf/yum。
 需要能访问 GitHub、Go 官方下载站和 Go 模块代理，至少有一个可供客户端访问的公网 IPv4。
 不适用于 Windows、macOS、OpenRC 或未运行 systemd 的普通容器。
 
+客户端和服务器端必须同时升级到 DataChannel 版本，不能与旧 H.264 代理互通。
+详见 [DATACHANNEL.md](DATACHANNEL.md)。启动命令、共享密钥和端口无需更换。
+
 ## 一条命令安装
 
 以 **root** 登录服务器后执行：
@@ -19,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh |
 curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh | sudo bash
 ```
 
-默认检测公网 IPv4，使用同一端口号 **9300/TCP（信令）+ 9300/UDP（媒体）**。
+默认检测公网 IPv4，使用同一端口号 **9300/TCP（信令）+ 9300/UDP（WebRTC DataChannel）**。
 如果服务器有云安全组，还需要在云控制台放行这两种协议；脚本无法代操作云安全组。
 
 指定公网地址、端口：
@@ -52,7 +55,7 @@ bash /tmp/h264proxy-install.sh
 6. 创建专用 `h264proxy` 用户；首次生成随机 32 字节密钥，已有合法密钥始终保留。
 7. 写入 systemd 服务，恢复 SELinux 文件标签，设置开机启动和进程退出后重启。
 8. 若 firewalld 或 UFW 已启用，添加应用端口规则；不清空规则、不启用原本关闭的防火墙。
-9. 启动服务并检查 H.264 SDP 信令响应；配置、启动或健康检查失败时，恢复旧二进制、
+9. 启动服务并检查 DataChannel/SCTP SDP 信令响应；配置、启动或健康检查失败时，恢复旧二进制、
    旧配置、旧服务状态，并撤销本次新增的防火墙规则。
 
 成功时输出 `INSTALLED`、安装的提交 SHA、网关地址、密钥路径和管理命令。
@@ -162,14 +165,14 @@ bash /tmp/h264proxy-install.sh --ref FULL_40_CHARACTER_COMMIT_SHA
 
 低于 1024 的端口会给服务增加绑定低端口所需的 `CAP_NET_BIND_SERVICE`，仍以专用用户运行。
 更换端口不会主动删除旧端口的既有防火墙规则，管理员可以确认无其他服务依赖后自行清理。
-如果手工配置了独立信令地址/媒体端口，请继续使用手动部署，不要用这个单端口安装器覆盖。
+如果手工配置了独立信令地址/ICE UDP 端口，请继续使用手动部署，不要用这个单端口安装器覆盖。
 
 未检测到已运行的 firewalld/UFW 时，脚本会提示自行检查其他 iptables/nftables 或云防火墙；
 它不会修改未知防火墙配置。健康检查证明服务器进程和本机信令可用，公网 UDP/NAT 路径仍需
 客户端实际连接验证。
 
 当前网关每个进程配对一个客户端；断线后可重启网关建立新会话。服务端进程自动重启并不
-等于客户端自动重连。目前不提供 SOCKS UDP ASSOCIATE，也不声称传输载荷是可解码 H.264。
+等于客户端自动重连。目前不提供 SOCKS UDP ASSOCIATE，代理数据通过 SCTP/DTLS DataChannel 传输，不包含视频轨道。
 
 ## 安装器验证
 

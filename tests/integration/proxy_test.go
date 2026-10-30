@@ -83,6 +83,26 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 		}
 		t.Fatal("SOCKS listener never ready")
 	}
+	// SDP must actually negotiate SCTP, with no media fallback.
+	offerResp, err := http.Get("http://" + sigAddr + "/offer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	offerBody, err := io.ReadAll(offerResp.Body)
+	offerResp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offer struct {
+		Transport string
+		SDP       struct{ SDP string }
+	}
+	if err = json.Unmarshal(offerBody, &offer); err != nil {
+		t.Fatal(err)
+	}
+	if offer.Transport != "datachannel-v1" || !strings.Contains(offer.SDP.SDP, "m=application") || !strings.Contains(offer.SDP.SDP, "webrtc-datachannel") || strings.Contains(offer.SDP.SDP, "m=video") {
+		t.Fatalf("unexpected proxy SDP: %s", offerBody)
+	}
 	dialer, e := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
 	if e != nil {
 		t.Fatal(e)
@@ -139,7 +159,7 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 		t.Error(e)
 	}
 	// Target waits for TCP FIN before generating its response. This verifies
-	// CloseWrite through real SOCKS -> mux -> SRTP -> remote TCP and back.
+	// CloseWrite through real SOCKS -> mux -> DataChannel -> remote TCP and back.
 	fin, e := net.Listen("tcp", "127.0.0.1:0")
 	if e != nil {
 		t.Fatal(e)
@@ -192,16 +212,17 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 		var st struct {
 			ActiveStreams                            int
 			BytesSent, BytesReceived, DecodeFailures uint64
+			Retransmits                              uint64
 		}
 		if e = json.Unmarshal(b, &st); e != nil {
 			t.Fatal(e)
 		}
-		if st.ActiveStreams != 0 || st.BytesSent == 0 || st.BytesReceived == 0 || st.DecodeFailures != 0 {
+		if st.ActiveStreams != 0 || st.BytesSent == 0 || st.BytesReceived == 0 || st.DecodeFailures != 0 || st.Retransmits != 0 {
 			t.Errorf("proxy stats: %+v", st)
 		}
 		log, _ := os.ReadFile(logs[i])
-		if !bytes.Contains(log, []byte(`"codec":"video/H264"`)) {
-			t.Errorf("missing H264 negotiation: %s", log)
+		if !bytes.Contains(log, []byte(`"transport":"datachannel-v1"`)) {
+			t.Errorf("missing DataChannel negotiation: %s", log)
 		}
 	}
 }

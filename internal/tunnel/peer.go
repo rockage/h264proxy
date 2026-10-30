@@ -15,8 +15,8 @@ import (
 
 	"github.com/pion/webrtc/v4"
 	cryptox "github.com/roca/h264-tunnel-lab/internal/crypto"
+	"github.com/roca/h264-tunnel-lab/internal/datawire"
 	"github.com/roca/h264-tunnel-lab/internal/logging"
-	"github.com/roca/h264-tunnel-lab/internal/media"
 	"github.com/roca/h264-tunnel-lab/internal/mux"
 	"github.com/roca/h264-tunnel-lab/internal/rtc"
 )
@@ -33,19 +33,19 @@ type Config struct {
 type Peer struct {
 	Session *mux.Session
 	pc      *webrtc.PeerConnection
-	reader  *media.DeferredRTPReader
+	wire    *datawire.Channel
 	http    *http.Server
 	once    sync.Once
 }
 
-func (p *Peer) ReceiveStats() media.ReceiveStats { return p.reader.Stats() }
+func (p *Peer) BufferedAmount() uint64 { return p.wire.BufferedAmount() }
 
 func (p *Peer) Close() error {
 	p.once.Do(func() {
 		if p.Session != nil {
 			p.Session.Close()
 		}
-		p.reader.Abort()
+		p.wire.Close()
 		if p.http != nil {
 			p.http.Close()
 		}
@@ -59,7 +59,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if cfg.Log == nil {
 		return nil, fmt.Errorf("tunnel: logger required")
 	}
-	api, err := rtc.NewAPI(cfg.RTC)
+	api, err := rtc.NewDataAPI(cfg.RTC)
 	if err != nil {
 		return nil, err
 	}
@@ -67,29 +67,35 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Peer{pc: pc, reader: media.NewDeferredRTPReader()}
+	p := &Peer{pc: pc, wire: datawire.New()}
 	defer func() {
 		if err != nil {
 			p.Close()
 		}
 	}()
-	track, err := media.NewVideoTrack("video", "h264-proxy")
+	// One negotiated, reliable and ordered channel. Fixed ID avoids an untrusted
+	// peer opening extra channels; both roles configure exactly the same channel.
+	negotiated, ordered, id := true, true, uint16(0)
+	dc, err := pc.CreateDataChannel("proxy-v1", &webrtc.DataChannelInit{Negotiated: &negotiated, Ordered: &ordered, ID: &id})
 	if err != nil {
 		return nil, err
 	}
-	sender, err := pc.AddTrack(track)
-	if err != nil {
-		return nil, err
-	}
-	// Drain RTCP for the lifetime of the sender.
-	go func() {
-		b := make([]byte, 1500)
-		for {
-			if _, _, e := sender.Read(b); e != nil {
-				return
-			}
+	dc.OnOpen(func() {
+		rw, e := dc.Detach()
+		if e != nil {
+			p.wire.Close()
+			return
 		}
-	}()
+		wire, ok := rw.(datawire.Wire)
+		if !ok {
+			rw.Close()
+			p.wire.Close()
+			return
+		}
+		p.wire.Attach(wire)
+	})
+	dc.OnClose(func() { p.wire.Close() })
+	dc.OnError(func(error) { p.wire.Close() })
 	connected, failed := make(chan struct{}), make(chan struct{})
 	var connOnce, failOnce sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
@@ -98,11 +104,10 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 		case webrtc.PeerConnectionStateConnected:
 			connOnce.Do(func() { close(connected) })
 		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed, webrtc.PeerConnectionStateDisconnected:
-			p.reader.Abort()
+			p.wire.Close()
 			failOnce.Do(func() { close(failed) })
 		}
 	})
-	pc.OnTrack(func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { p.reader.SetTrack(t) })
 	var sid uint64
 	if cfg.Role == mux.RoleListener {
 		var b [8]byte
@@ -118,7 +123,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 		if e != nil {
 			return nil, e
 		}
-		signal := rtc.Signal{SessionID: sid, SDP: *frozen}
+		signal := rtc.Signal{Transport: "datachannel-v1", SessionID: sid, SDP: *frozen}
 		handler := http.NewServeMux()
 		handler.HandleFunc("GET /offer", func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(signal) })
 		var answerMu sync.Mutex
@@ -131,7 +136,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 				return
 			}
 			var answer rtc.Signal
-			if e := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&answer); e != nil || answer.SessionID != sid || answer.SDP.Type != webrtc.SDPTypeAnswer {
+			if e := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&answer); e != nil || answer.Transport != "datachannel-v1" || answer.SessionID != sid || answer.SDP.Type != webrtc.SDPTypeAnswer {
 				http.Error(w, "invalid answer", http.StatusBadRequest)
 				return
 			}
@@ -154,6 +159,9 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 		if e != nil {
 			return nil, e
 		}
+		if signal.Transport != "datachannel-v1" {
+			return nil, fmt.Errorf("tunnel: incompatible carrier; upgrade both peers to DataChannel")
+		}
 		if signal.SDP.Type != webrtc.SDPTypeOffer {
 			return nil, fmt.Errorf("tunnel: expected offer")
 		}
@@ -169,7 +177,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 		if e != nil {
 			return nil, e
 		}
-		data, e := json.Marshal(rtc.Signal{SessionID: sid, SDP: *frozen})
+		data, e := json.Marshal(rtc.Signal{Transport: "datachannel-v1", SessionID: sid, SDP: *frozen})
 		if e != nil {
 			return nil, e
 		}
@@ -193,23 +201,14 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 		return nil, fmt.Errorf("tunnel: peer failed during setup")
 	case <-connected:
 	}
-	codecs := sender.GetParameters().Codecs
-	if len(codecs) == 0 {
-		return nil, fmt.Errorf("tunnel: no negotiated codec")
-	}
-	if err = media.VerifyCodec(codecs[0].MimeType); err != nil {
+	if err = p.wire.Wait(ctx); err != nil {
 		return nil, err
 	}
-	var random [6]byte
-	if _, err = rand.Read(random[:]); err != nil {
-		return nil, err
-	}
-	writer := media.NewRTPWriter(track, binary.BigEndian.Uint16(random[:2]), binary.BigEndian.Uint32(random[2:]), media.ClockRate/30)
-	p.Session, err = mux.New(mux.Config{SessionID: sid, Role: cfg.Role, Mode: cryptox.ModeAEAD, Master: cfg.Key, Sink: writer, Source: p.reader, Log: cfg.Log, RateBytesPerSec: cfg.Rate})
+	p.Session, err = mux.New(mux.Config{SessionID: sid, Role: cfg.Role, Mode: cryptox.ModeAEAD, Master: cfg.Key, ReliableTransport: true, Sink: p.wire, Source: p.wire, Log: cfg.Log, RateBytesPerSec: cfg.Rate})
 	if err != nil {
 		return nil, err
 	}
-	cfg.Log.Info("tunnel_ready", "codec", codecs[0].MimeType, "session_id", fmt.Sprintf("%016x", sid))
+	cfg.Log.Info("tunnel_ready", "transport", "datachannel-v1", "session_id", fmt.Sprintf("%016x", sid))
 	go func() {
 		select {
 		case <-ctx.Done():

@@ -1,5 +1,5 @@
 // Package mux implements a full-duplex, multi-stream layer over a single
-// bidirectional WebRTC H.264 media channel. Many logical streams
+// bidirectional packet transport. Many logical streams
 // (io.ReadWriteCloser) are multiplexed in each direction over one Session,
 // each with independent in-order reassembly, duplicate/reorder detection, and
 // credit-based flow control. Each direction is protected by its own
@@ -7,7 +7,7 @@
 //
 // A Session is transport-agnostic: it writes/reads frame payloads through the
 // transfer.PacketSink / PacketSource interfaces, which in production are backed
-// by the WebRTC RTP track (one send track, one received track).
+// by a reliable DataChannel for the proxy, or RTP in legacy lab tools.
 package mux
 
 import (
@@ -47,13 +47,15 @@ var ErrSessionClosed = errors.New("mux: session closed")
 
 // Config configures a Session.
 type Config struct {
-	SessionID uint64
-	Role      Role
-	Mode      string // cryptox.ModeAEAD or cryptox.ModeRaw
-	Master    []byte // master key (aead mode)
-	Sink      transfer.PacketSink
-	Source    transfer.PacketSource
-	Log       *logging.Logger
+	// ReliableTransport delegates loss recovery and congestion control to SCTP.
+	ReliableTransport bool
+	SessionID         uint64
+	Role              Role
+	Mode              string // cryptox.ModeAEAD or cryptox.ModeRaw
+	Master            []byte // master key (aead mode)
+	Sink              transfer.PacketSink
+	Source            transfer.PacketSource
+	Log               *logging.Logger
 	// RateBytesPerSec paces the aggregate send side to avoid overflowing the
 	// media receive path (which, unlike a reliable transport, silently drops
 	// packets under burst). 0 means unlimited.
@@ -141,7 +143,7 @@ func New(cfg Config) (*Session, error) {
 		outCh:      make(chan *outFrame, 1024),
 		feedbackCh: make(chan *outFrame, 256),
 	}
-	s.cong = newCongestion(!cfg.NoCongestion, s.rtt, s.closedCh)
+	s.cong = newCongestion(!cfg.NoCongestion && !cfg.ReliableTransport, s.rtt, s.closedCh)
 	if cfg.Role == RoleDialer {
 		s.oddLocal = true
 		s.nextLocalID = 1
@@ -388,6 +390,10 @@ func (s *Session) demux() {
 		if derr != nil {
 			s.decodeFail.Add(1)
 			s.log.Warn("frame_decode_failed", logging.KeyError, derr.Error())
+			if s.cfg.ReliableTransport {
+				s.shutdown(derr)
+				return
+			}
 			continue
 		}
 		if h.SessionID != s.cfg.SessionID || h.StreamID == 0 {
@@ -466,7 +472,9 @@ func (s *Session) maintain() {
 			// WINDOW or ACK cannot stall a live transfer.
 			heartbeat := ticks%4 == 0
 			for _, st := range streams {
-				st.retransmitDue(now) // sender: RTO retransmit
+				if !s.cfg.ReliableTransport {
+					st.retransmitDue(now)
+				} // RTP-only recovery
 				ackNow, active, grant, ack := st.receiverState()
 				// Fresh data/holes need prompt feedback. Idle streams only need
 				// the slower heartbeat to recover a lost ACK or WINDOW.

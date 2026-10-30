@@ -49,12 +49,25 @@ type Options struct {
 func LoopbackOptions() Options { return Options{Network: false} }
 
 // NewAPI builds a configured *webrtc.API for the given options.
-func NewAPI(opts Options) (*webrtc.API, error) {
+func NewAPI(opts Options) (*webrtc.API, error) { return newAPI(opts, false) }
+
+// NewDataAPI configures ICE and detached reliable DataChannels without media codecs.
+func NewDataAPI(opts Options) (*webrtc.API, error) { return newAPI(opts, true) }
+
+func newAPI(opts Options, dataOnly bool) (*webrtc.API, error) {
 	m := &webrtc.MediaEngine{}
-	if err := media.RegisterH264Only(m); err != nil {
+	if err := func() error {
+		if dataOnly {
+			return nil
+		}
+		return media.RegisterH264Only(m)
+	}(); err != nil {
 		return nil, err
 	}
 	se := webrtc.SettingEngine{}
+	if dataOnly {
+		se.DetachDataChannels()
+	}
 	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 
@@ -126,6 +139,7 @@ func Config(opts Options) webrtc.Configuration {
 
 // Signal is the JSON payload exchanged over HTTP during signaling.
 type Signal struct {
+	Transport string                    `json:"transport,omitempty"`
 	SessionID uint64                    `json:"session_id"`
 	SDP       webrtc.SessionDescription `json:"sdp"`
 }

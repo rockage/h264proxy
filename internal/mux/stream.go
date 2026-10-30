@@ -168,8 +168,12 @@ func (s *Stream) Write(p []byte) (int, error) {
 	total := 0
 	for len(p) > 0 {
 		n := len(p)
-		if n > MaxChunk {
-			n = MaxChunk
+		limit := MaxChunk
+		if s.sess.cfg.ReliableTransport {
+			limit = 16 * 1024
+		}
+		if n > limit {
+			n = limit
 		}
 		chunk := p[:n]
 		p = p[n:]
@@ -256,7 +260,7 @@ func (s *Stream) Reset() error {
 
 func (s *Stream) trackRetx(typ muxproto.FrameType, seq uint64, pt []byte) {
 	e := &retxEntry{typ: typ, seq: seq, tries: 1, queued: true}
-	if len(pt) > 0 {
+	if len(pt) > 0 && !s.sess.cfg.ReliableTransport {
 		e.pt = append([]byte(nil), pt...)
 	}
 	if typ == muxproto.FrameData {
@@ -372,7 +376,7 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 		wait = lossBudget
 	}
 	for seq, e := range s.retx {
-		if !e.queued && !e.lastSent.IsZero() && maxReported > seq && maxReported-seq > 3 && maxReported > e.fastAckHigh && now.Sub(e.lastSent) >= wait {
+		if !s.sess.cfg.ReliableTransport && !e.queued && !e.lastSent.IsZero() && maxReported > seq && maxReported-seq > 3 && maxReported > e.fastAckHigh && now.Sub(e.lastSent) >= wait {
 			if e.tries >= maxRetries {
 				s.txErr = ErrPeerUnreachable
 				failed = true
@@ -415,6 +419,9 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 
 // retransmitDue resends frames whose RTO elapsed. Called by the session timer.
 func (s *Stream) retransmitDue(now time.Time) {
+	if s.sess.cfg.ReliableTransport {
+		return
+	}
 	srtt, _, base := s.sess.rtt.snapshot()
 	base = recoveryRTO(srtt, base)
 	var resend []*retxEntry

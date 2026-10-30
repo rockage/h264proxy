@@ -1,7 +1,7 @@
 # Phase 3 — SOCKS5 TCP proxy
 
 `cmd/proxy` connects a local SOCKS5 listener to a remote TCP gateway over one
-long-lived, AES-256-GCM-protected mux session on a WebRTC H.264 media channel.
+long-lived, AES-256-GCM-protected mux session on a reliable, ordered WebRTC DataChannel.
 
 ## Run locally
 
@@ -99,16 +99,16 @@ SOCKS client        local proxy       reliable mux stream        gateway
  CONNECT   -------> DATA: original CONNECT request ------------> parse target
                                                                 TCP dial
  reply     <------- DATA: SOCKS reply + bound address <---------- result
- TCP bytes <======> DATA with per-direction sequence/ARQ <=====> TCP bytes
+ TCP bytes <======> DATA with per-direction sequence/flow credit <=====> TCP bytes
  FIN       -------> CLOSE (write half only) --------------------> TCP CloseWrite
- error/cancel -----> RESET, repeated until ACK -----------------> close TCP
+ error/cancel -----> RESET, delivered reliably by SCTP -----------------> close TCP
 ```
 
 The request/reply bytes are ordinary SOCKS5 CONNECT records without an extra
 SOCKS authentication exchange inside the mux. Keeping them in reliable DATA
 handles lost/reordered OPEN and DATA without a separate metadata retry protocol.
 Only SDP is sent over HTTP. Application traffic, destination addresses and
-connection replies travel inside AEAD-protected SRTP payloads.
+connection replies travel inside AEAD-protected DataChannel messages.
 
 ## Options
 
@@ -123,7 +123,7 @@ connection replies travel inside AEAD-protected SRTP payloads.
 | `-dial-timeout` | `10s` | Gateway TCP dial timeout |
 | `-idle-timeout` | `5m` | Connection inactivity timeout; `0` disables |
 | `-max-connections` | `128` | Concurrent handlers per endpoint |
-| `-rate` | `16000000` | Aggregate sender pace ceiling, B/s; `0` unlimited |
+| `-rate` | `0` | Aggregate sender pace ceiling, B/s; `0` unlimited |
 | `-net` | false | Real-network ICE rather than loopback |
 | `-public-ip`, `-udp-port`, `-stun` | empty / 0 / empty | Existing ICE network options |
 | `-log`, `-report` | empty | Structured log / final mux statistics JSON |
@@ -134,9 +134,9 @@ One gateway process pairs with one client process for its lifetime. A failed
 transport exits; automatic reconnection, multiple authenticated peers, SOCKS
 username/password, BIND and UDP ASSOCIATE are future work. SOCKS is loopback by
 default; choosing another bind address exposes its no-auth listener to that
-network. The media payload remains opaque encrypted bytes, not decodable H.264.
-The earlier WAN measurements remain a performance baseline; phase 3 does not
-change Reno/ARQ tuning or claim improved WAN throughput.
+network. SCTP handles reliability and congestion control; application ARQ/Reno are disabled.
+The mux retains stream flow control, delivery ACKs for reclamation and AEAD.
+See [DATACHANNEL.md](DATACHANNEL.md) for migration and current measurements.
 
 ## Verification
 
@@ -157,6 +157,6 @@ truncation and bounded field validation, pipelined application bytes,
 and responses after TCP FIN, using the same lossy mux fixture.
 `TestTwoProcessSOCKSProxy` builds the real proxy with `-race`, starts independent
 gateway/client processes, sends four concurrent 300 KiB HTTP bodies through
-actual WebRTC/SRTP and verifies their SHA-256/body responses, then tests TCP FIN
-before response. Both processes must negotiate H.264, exit cleanly and report
+actual WebRTC DataChannel and verifies their SHA-256/body responses, then tests TCP FIN
+before response. Both processes must negotiate SCTP with no video media section, exit cleanly and report
 zero active streams and zero decode failures.

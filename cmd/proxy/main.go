@@ -1,4 +1,4 @@
-// Command proxy exposes SOCKS5 CONNECT through a WebRTC H.264 mux tunnel.
+// Command proxy exposes SOCKS5 CONNECT through a WebRTC DataChannel mux tunnel.
 package main
 
 import (
@@ -31,7 +31,7 @@ func main() {
 	publicIP := flag.String("public-ip", "", "gateway public IP candidate")
 	udpPort := flag.Int("udp-port", 0, "fixed local ICE UDP port")
 	stun := flag.String("stun", "", "comma-separated STUN URLs")
-	rate := flag.Int("rate", mux.DefaultRateBytesPerSec, "aggregate sender rate ceiling in bytes/sec (0=unlimited)")
+	rate := flag.Int("rate", 0, "aggregate sender rate ceiling in bytes/sec (0=unlimited)")
 	setup := flag.Duration("connect-timeout", 45*time.Second, "tunnel setup timeout")
 	handshake := flag.Duration("handshake-timeout", 15*time.Second, "SOCKS/CONNECT handshake timeout")
 	dial := flag.Duration("dial-timeout", 10*time.Second, "remote TCP connect timeout")
@@ -143,7 +143,7 @@ func logTransportStats(ctx context.Context, peer *tunnel.Peer, log *logging.Logg
 		case <-sess.Closed():
 			return
 		case <-ticker.C:
-			log.Info("mux_stats", "stats", sess.Stats(), "rtp_receive", peer.ReceiveStats())
+			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "buffered_amount", peer.BufferedAmount())
 		}
 	}
 }

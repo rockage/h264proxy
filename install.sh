@@ -410,8 +410,9 @@ wait_ready() {
       pid="$(systemctl show "$SERVICE" --property=MainPID --value)"
       if curl --noproxy '*' -fsS --connect-timeout 1 --max-time 2 "http://127.0.0.1:$PORT/offer" -o "$WORK_DIR/offer.json" && python3 - "$WORK_DIR/offer.json" <<'PY'
 import json, sys
-s = json.load(open(sys.argv[1])).get('sdp', {})
-raise SystemExit(0 if s.get('type') == 'offer' and 'H264/90000' in s.get('sdp', '') and 'm=video' in s['sdp'] else 1)
+offer = json.load(open(sys.argv[1]))
+s = offer.get('sdp', {})
+raise SystemExit(0 if offer.get('transport') == 'datachannel-v1' and s.get('type') == 'offer' and 'm=application' in s.get('sdp', '') and 'webrtc-datachannel' in s['sdp'] and 'm=video' not in s['sdp'] else 1)
 PY
       then
         sleep 1

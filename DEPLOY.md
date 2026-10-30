@@ -1,3 +1,7 @@
+> Current SOCKS gateway uses DataChannel; follow [INSTALL.md](INSTALL.md) and
+> [DATACHANNEL.md](DATACHANNEL.md). The file/RTP performance procedure below
+> is a historical lab experiment, not the production proxy deployment.
+
 # Real-network deployment & performance test
 
 For a new gateway installation, use the generic **[one-command installer](INSTALL.md)**:
