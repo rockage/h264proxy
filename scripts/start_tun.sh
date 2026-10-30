@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/client_config.sh"
 h264_load_client_config "$ROOT"
 h264_require_client_target
+h264_performance_args
 REMOTE="${H264_SSH:-}"
 ENDPOINT="$H264_ENDPOINT"
 TRANSPORT="${H264_ICE_TRANSPORT:-udp}"
@@ -45,6 +46,7 @@ if [[ "${H264_RESTART_GATEWAY:-1}" == 1 ]]; then
 fi
 echo "启动 TUN：${DEVICE}，前端：${BACKEND}，网络服务：${SERVICE}，传输：${TRANSPORT}；Ctrl-C 停止并恢复网络。"
 exec sudo "$ROOT/build/proxy" -role client -net -ice-transport "$TRANSPORT" -http "$ENDPOINT" -stun "$STUN" \
+  "${H264_PERF_ARGS[@]}" \
   -key "$KEY" -socks "$SOCKS" -connect-timeout 60s \
   -log "$ROOT/build/logs/tun-${BACKEND}-client.log" \
   -report "$ROOT/build/logs/tun-${BACKEND}-client-report.json" \

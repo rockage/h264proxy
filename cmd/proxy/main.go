@@ -14,6 +14,7 @@ import (
 	"time"
 
 	cryptox "github.com/roca/h264-tunnel-lab/internal/crypto"
+	"github.com/roca/h264-tunnel-lab/internal/datawire"
 	"github.com/roca/h264-tunnel-lab/internal/logging"
 	"github.com/roca/h264-tunnel-lab/internal/mux"
 	"github.com/roca/h264-tunnel-lab/internal/rtc"
@@ -43,6 +44,9 @@ func main() {
 	logPath := flag.String("log", "", "optional structured log file")
 	report := flag.String("report", "", "write final mux statistics on exit")
 	statsInterval := flag.Duration("stats-interval", 5*time.Second, "log live transport counters at this interval (0=disabled)")
+	dcHigh := flag.Uint64("dc-high-water", 0, "DataChannel buffered byte high water (0/0 preserves 256/64 KiB)")
+	dcLow := flag.Uint64("dc-low-water", 0, "DataChannel buffered byte low water; must be below high water")
+	streamWindow := flag.Int64("stream-receive-window", 0, "per-stream advertised receive bytes (0=256 KiB, max=4 MiB)")
 	bypassEnabled := flag.Bool("bypass", false, "client: explicit SOCKS-only mode; leave system routes and DNS unchanged (mutually exclusive with -tun)")
 	tunEnabled := flag.Bool("tun", false, "client: enable macOS TUN TCP proxy and DNS over the tunnel (requires root)")
 	tunIPv6 := flag.Bool("tun-ipv6", false, "allow AAAA/HTTPS/SVCB DNS records in TUN mode (requires working gateway IPv6)")
@@ -54,7 +58,8 @@ func main() {
 	tunState := flag.String("tun-state", "/Library/Application Support/H264Proxy/tun-state.json", "absolute recovery journal path")
 	tunRecover := flag.Bool("tun-recover", false, "restore DNS/routes from -tun-state after an abnormal exit, then exit")
 	flag.Parse()
-
+	// Recovery must remain available even if experiment environment values
+	// are invalid. It does not open a transport or use its parameters.
 	if *tunRecover {
 		if err := tun.Recover(*tunState); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -63,6 +68,28 @@ func main() {
 		fmt.Println("TUN DNS/routes restored")
 		return
 	}
+	// Explicit flags override service environment; no unit ExecStart changes
+	// are needed to run a separate parameter trial on an upgraded gateway.
+	explicit := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	for name, env := range map[string]string{"dc-high-water": "H264_DC_HIGH_WATER", "dc-low-water": "H264_DC_LOW_WATER", "stream-receive-window": "H264_STREAM_RECEIVE_WINDOW"} {
+		if value, ok := os.LookupEnv(env); ok && !explicit[name] {
+			if err := flag.Set(name, value); err != nil {
+				fmt.Fprintln(os.Stderr, env+": "+err.Error())
+				os.Exit(2)
+			}
+		}
+	}
+	dcConfig := datawire.Config{HighWater: *dcHigh, LowWater: *dcLow}
+	if err := dcConfig.Validate(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if err := mux.ValidateReceiveWindow(*streamWindow, true); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
 	if *bypassEnabled && (*tunEnabled || *role != "client") {
 		fmt.Fprintln(os.Stderr, "-bypass requires -role client and is mutually exclusive with -tun")
 		os.Exit(2)
@@ -104,6 +131,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err = run(ctx, *role, *socksAddr, *keyPath, *report, *setup, tunnel.Config{
+		DataChannel: dcConfig, StreamReceiveWindow: *streamWindow,
 		HTTP: *httpAddr, Rate: *rate, Log: log,
 		RTC: rtc.Options{Transport: *iceTransport, TCPPort: *iceTCPPort, Network: *netMode, PublicIP: *publicIP, UDPPort: *udpPort, STUNServers: splitCSV(*stun)},
 	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log}, *statsInterval, tc)
@@ -249,7 +277,7 @@ func logTransportStats(ctx context.Context, peer *tunnel.Peer, log *logging.Logg
 		case <-sess.Closed():
 			return
 		case <-ticker.C:
-			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "ice_protocol", peer.ICEProtocol(), "pc_state", peer.ConnectionState(), "ice_path", peer.ICEPath(), "buffered_amount", peer.BufferedAmount(), "sctp", peer.SCTPStats())
+			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "ice_protocol", peer.ICEProtocol(), "pc_state", peer.ConnectionState(), "ice_path", peer.ICEPath(), "buffered_amount", peer.BufferedAmount(), "datachannel", peer.DataChannelStats(), "sctp", peer.SCTPStats())
 		}
 	}
 }

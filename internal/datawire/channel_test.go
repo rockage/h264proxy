@@ -68,6 +68,51 @@ func TestSetupCancellationAndMessageLimit(t *testing.T) {
 	}
 }
 
+func TestConfiguredBackpressureAndMetrics(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		c, err := NewWithConfig(Config{HighWater: 1 << 20, LowWater: 512 << 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := &fakeWire{}
+		w.amount.Store((1 << 20) + 1)
+		c.Attach(w)
+		done := make(chan error, 1)
+		go func() { done <- c.WritePayload([]byte("data"), false) }()
+		deadline := time.Now().Add(time.Second)
+		for c.Stats().BackpressureWaiters == 0 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if c.Stats().BackpressureWaiters != 1 || w.writes.Load() != 0 {
+			t.Fatal("custom bound not applied")
+		}
+		if abort {
+			c.Close()
+		} else {
+			w.amount.Store(512 << 10)
+			w.callback()
+		}
+		select {
+		case err := <-done:
+			if (err != nil) != abort {
+				t.Fatal(err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("writer leaked")
+		}
+		s := c.Stats()
+		if s.BackpressureWaits != 1 || s.BackpressureNanos == 0 || s.BackpressureWaiters != 0 || s.MaxBufferedAmount != (1<<20)+1 {
+			t.Fatalf("bad wait metrics: %+v", s)
+		}
+		c.Close()
+	}
+	for _, cfg := range []Config{{HighWater: 1}, {HighWater: 1 << 20, LowWater: 1 << 20}, {HighWater: 9 << 20}, {LowWater: 1}} {
+		if _, err := NewWithConfig(cfg); err == nil {
+			t.Fatal("invalid config accepted", cfg)
+		}
+	}
+}
+
 type payloadWire struct {
 	fakeWire
 	payload []byte

@@ -6,11 +6,31 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 const MaxMessage = 32 * 1024
 const highWater = 256 * 1024
 const lowWater = 64 * 1024
+
+type Config struct{ HighWater, LowWater uint64 }
+
+func (cfg Config) Validate() error {
+	if cfg.HighWater == 0 && cfg.LowWater == 0 {
+		return nil
+	}
+	if cfg.HighWater < MaxMessage || cfg.HighWater > 8*1024*1024 || cfg.LowWater >= cfg.HighWater {
+		return errors.New("datawire: require 32 KiB <= high water <= 8 MiB and low water < high water")
+	}
+	return nil
+}
+
+type Stats struct {
+	HighWater, LowWater                                     uint64
+	BackpressureWaits, BackpressureNanos, MaxBufferedAmount uint64
+	BackpressureWaiters                                     int64
+}
 
 // Wire is implemented by Pion's detached DataChannel. Reads preserve messages.
 type Wire interface {
@@ -21,16 +41,32 @@ type Wire interface {
 }
 
 type Channel struct {
-	mu     sync.Mutex
-	wire   Wire
-	ready  chan struct{}
-	closed chan struct{}
-	low    chan struct{}
-	once   sync.Once
+	mu                            sync.Mutex
+	wire                          Wire
+	ready                         chan struct{}
+	closed                        chan struct{}
+	low                           chan struct{}
+	once                          sync.Once
+	cfg                           Config
+	waits, waitNanos, maxBuffered atomic.Uint64
+	waiters                       atomic.Int64
 }
 
 func New() *Channel {
-	return &Channel{ready: make(chan struct{}), closed: make(chan struct{}), low: make(chan struct{}, 1)}
+	c, _ := NewWithConfig(Config{})
+	return c
+}
+func NewWithConfig(cfg Config) (*Channel, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if cfg.HighWater == 0 {
+		cfg = Config{highWater, lowWater}
+	}
+	return &Channel{ready: make(chan struct{}), closed: make(chan struct{}), low: make(chan struct{}, 1), cfg: cfg}, nil
+}
+func (c *Channel) Stats() Stats {
+	return Stats{HighWater: c.cfg.HighWater, LowWater: c.cfg.LowWater, BackpressureWaits: c.waits.Load(), BackpressureNanos: c.waitNanos.Load(), MaxBufferedAmount: c.maxBuffered.Load(), BackpressureWaiters: c.waiters.Load()}
 }
 func (c *Channel) Attach(w Wire) {
 	c.mu.Lock()
@@ -45,7 +81,7 @@ func (c *Channel) Attach(w Wire) {
 		w.Close()
 		return
 	}
-	w.SetBufferedAmountLowThreshold(lowWater)
+	w.SetBufferedAmountLowThreshold(c.cfg.LowWater)
 	w.OnBufferedAmountLow(func() {
 		select {
 		case c.low <- struct{}{}:
@@ -83,18 +119,34 @@ func (c *Channel) WritePayload(b []byte, _ bool) error {
 	if err != nil {
 		return err
 	}
-	for w.BufferedAmount() > highWater {
-		select {
-		case <-c.closed:
-			return io.ErrClosedPipe
-		case <-c.low:
-		}
+	if err = c.waitForCapacity(w); err != nil {
+		return err
 	}
 	n, err := w.Write(b)
 	if err == nil && n != len(b) {
 		return io.ErrShortWrite
 	}
 	return err
+}
+
+func (c *Channel) waitForCapacity(w Wire) error {
+	amount := w.BufferedAmount()
+	for old := c.maxBuffered.Load(); amount > old && !c.maxBuffered.CompareAndSwap(old, amount); old = c.maxBuffered.Load() {
+	}
+	if amount > c.cfg.HighWater {
+		started := time.Now()
+		c.waits.Add(1)
+		c.waiters.Add(1)
+		defer func() { c.waitNanos.Add(uint64(time.Since(started))); c.waiters.Add(-1) }()
+	}
+	for w.BufferedAmount() > c.cfg.HighWater {
+		select {
+		case <-c.closed:
+			return io.ErrClosedPipe
+		case <-c.low:
+		}
+	}
+	return nil
 }
 func (c *Channel) ReadPayload() ([]byte, bool, error) {
 	b := make([]byte, MaxMessage)

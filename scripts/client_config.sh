@@ -16,7 +16,9 @@ import pathlib, shlex, sys
 allowed = {
     'H264_ENDPOINT', 'H264_SSH', 'H264_KEY', 'H264_SOCKS', 'H264_STUN', 'H264_ICE_TRANSPORT',
     'H264_TUN_SERVICE', 'H264_TUN_DEVICE', 'H264_TUN_BACKEND', 'H264_RESTART_GATEWAY', 'H264_PUBLIC_IP',
+    'H264_DC_HIGH_WATER', 'H264_DC_LOW_WATER', 'H264_STREAM_RECEIVE_WINDOW',
 }
+
 path = pathlib.Path(sys.argv[1])
 try:
     for number, line in enumerate(path.read_text().splitlines(), 1):
@@ -48,6 +50,21 @@ PY
       export "$name"
     fi
   done <<< "$values"
+}
+
+h264_performance_args() {
+  local high="${H264_DC_HIGH_WATER:-0}" low="${H264_DC_LOW_WATER:-0}" window="${H264_STREAM_RECEIVE_WINDOW:-0}"
+  python3 - "$high" "$low" "$window" <<'PYPERF' || return 1
+import sys
+try:
+    if any(not x.isascii() or not x.isdigit() for x in sys.argv[1:]): raise ValueError()
+    high, low, window = map(int, sys.argv[1:])
+    if (high or low) and not (32768 <= high <= 8388608 and 0 <= low < high): raise ValueError()
+    if window and not 262144 <= window <= 4194304: raise ValueError()
+except ValueError:
+    sys.exit('性能参数无效：high 为 32 KiB..8 MiB、low < high；窗口为 256 KiB..4 MiB，0 表示默认。')
+PYPERF
+  H264_PERF_ARGS=(-dc-high-water "$high" -dc-low-water "$low" -stream-receive-window "$window")
 }
 
 h264_require_client_target() {

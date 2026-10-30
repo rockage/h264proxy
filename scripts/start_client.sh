@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/client_config.sh"
 h264_load_client_config "$ROOT"
 h264_require_client_target
+h264_performance_args
 REMOTE="${H264_SSH:-}"
 ENDPOINT="$H264_ENDPOINT"
 TRANSPORT="${H264_ICE_TRANSPORT:-udp}"
@@ -57,6 +58,7 @@ if [[ "${H264_RESTART_GATEWAY:-1}" == 1 ]]; then
 fi
 echo "启动旁路模式，SOCKS5：${SOCKS}（此窗口保持运行；Ctrl-C 停止）"
 "$BIN" -role client -bypass -net -ice-transport "$TRANSPORT" -http "$ENDPOINT" -stun "$STUN" \
+  "${H264_PERF_ARGS[@]}" \
   -key "$KEY" -socks "$SOCKS" -connect-timeout 60s \
   -log "$ROOT/build/logs/proxy-client.log" \
   -report "$ROOT/build/logs/proxy-client-report.json" &

@@ -66,6 +66,8 @@ The switches are mutually exclusive. Stop the current client before switching.
 Bypass mode leaves system routes/DNS untouched and resolves SOCKS hostnames at
 the gateway. TUN mode requires sudo and restores its system routes/DNS on exit.
 Both use the same server/key/ICE carrier settings in `build/client.env`.
+Transport buffering and per-stream receive credit can be tested independently;
+see [window parameters and waiting diagnostics](PERFORMANCE_WINDOWS.md).
 See [sing-box setup and comparison](SINGBOX_TUN.md) for the additional frontend
 and the measured [comparison results](SINGBOX_COMPARISON.md).
 Existing `start_client.sh` and `start_tun.sh` remain supported. Direct binary

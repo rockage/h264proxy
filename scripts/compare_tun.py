@@ -28,6 +28,9 @@ SOCKS = os.environ.get('H264_SOCKS', '127.0.0.1:1080')
 DEVICE = os.environ.get('H264_TUN_DEVICE', 'utun123')
 STATE = '/Library/Application Support/H264Proxy/tun-state.json'
 SIZE = 4 * 1024 * 1024
+PERFORMANCE = {name: int(os.environ.get(env, '0')) for name, env in (
+    ('dc-high-water', 'H264_DC_HIGH_WATER'), ('dc-low-water', 'H264_DC_LOW_WATER'),
+    ('stream-receive-window', 'H264_STREAM_RECEIVE_WINDOW'))}
 
 
 def run(args, timeout=20, check=True):
@@ -129,6 +132,8 @@ def phase(directory, number, backend, ip):
             '-tun2socks', str(ROOT/'build/tools/tun2socks'),
             '-sing-box', str(ROOT/'build/tools/sing-box'),
             '-report', str(prefix.with_suffix('.mux.json'))]
+    for name, value in PERFORMANCE.items():
+        args.extend(['-' + name, str(value)])
     started = time.monotonic()
     result = {'backend': backend, 'phase': number}
     with console.open('w') as log:
@@ -205,6 +210,8 @@ def main():
         previous = json.loads((directory/'comparison.json').read_text())
         if previous.get('endpoint') != ENDPOINT or previous.get('ice_transport') != 'tcp' or previous.get('complete'):
             raise RuntimeError('仅可续跑同一 VPS、ICE-TCP 的未完成比较。')
+        if previous.get('transport_parameters', dict.fromkeys(PERFORMANCE, 0)) != PERFORMANCE:
+            raise RuntimeError('续跑不能改变传输参数；请为新参数开始独立测试。')
         (directory/f'comparison-before-resume-{stamp}.json').write_text(json.dumps(previous, ensure_ascii=False, indent=2)+'\n')
     else:
         directory.mkdir(mode=0o700)
@@ -217,6 +224,7 @@ def main():
     keepalive_thread = threading.Thread(target=keepalive, daemon=True)
     keepalive_thread.start()
     result = {'endpoint': ENDPOINT, 'ice_transport': 'tcp', 'order': 'ABBA', 'phases': [],
+              'transport_parameters': PERFORMANCE,
               'notes': 'Full TUN, no explicit proxy, 4MiB generated Cloudflare responses; includes public CDN variation.'}
     if previous:
         result = previous

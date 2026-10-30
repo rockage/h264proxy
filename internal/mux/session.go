@@ -49,13 +49,16 @@ var ErrSessionClosed = errors.New("mux: session closed")
 type Config struct {
 	// ReliableTransport delegates loss recovery and congestion control to SCTP.
 	ReliableTransport bool
-	SessionID         uint64
-	Role              Role
-	Mode              string // cryptox.ModeAEAD or cryptox.ModeRaw
-	Master            []byte // master key (aead mode)
-	Sink              transfer.PacketSink
-	Source            transfer.PacketSource
-	Log               *logging.Logger
+	// ReceiveWindow bounds unconsumed bytes per stream. Zero preserves 256 KiB.
+	// Larger windows are explicitly advertised using cumulative WINDOW frames.
+	ReceiveWindow int64
+	SessionID     uint64
+	Role          Role
+	Mode          string // cryptox.ModeAEAD or cryptox.ModeRaw
+	Master        []byte // master key (aead mode)
+	Sink          transfer.PacketSink
+	Source        transfer.PacketSource
+	Log           *logging.Logger
 	// RateBytesPerSec paces the aggregate send side to avoid overflowing the
 	// media receive path (which, unlike a reliable transport, silently drops
 	// packets under burst). 0 means unlimited.
@@ -109,20 +112,31 @@ type Session struct {
 	feedbackCoalesced atomic.Uint64
 
 	// metrics (atomic)
-	framesSent         atomic.Uint64
-	framesRecv         atomic.Uint64
-	bytesSent          atomic.Uint64
-	bytesRecv          atomic.Uint64
-	decodeFail         atomic.Uint64
-	pacingRate         atomic.Int64
-	fastRetransmits    atomic.Uint64
-	timeoutRetransmits atomic.Uint64
+	framesSent                   atomic.Uint64
+	framesRecv                   atomic.Uint64
+	bytesSent                    atomic.Uint64
+	bytesRecv                    atomic.Uint64
+	decodeFail                   atomic.Uint64
+	pacingRate                   atomic.Int64
+	fastRetransmits              atomic.Uint64
+	timeoutRetransmits           atomic.Uint64
+	creditWaits, creditWaitNanos atomic.Uint64
+	creditWaiters                atomic.Int64
+	queueWaits, queueWaitNanos   atomic.Uint64
+	queueWaiters                 atomic.Int64
+	sinkWriteNanos               atomic.Uint64
 }
 
 // New builds a Session and starts its demux goroutine.
 func New(cfg Config) (*Session, error) {
 	if cfg.Log == nil {
 		return nil, errors.New("mux: nil logger")
+	}
+	if err := ValidateReceiveWindow(cfg.ReceiveWindow, cfg.ReliableTransport); err != nil {
+		return nil, err
+	}
+	if cfg.ReceiveWindow == 0 {
+		cfg.ReceiveWindow = InitialWindow
 	}
 	sendCipher, recvCipher, err := buildCiphers(cfg)
 	if err != nil {
@@ -197,7 +211,10 @@ func (s *Session) writeLoop() {
 			s.log.Error("encode_failed", logging.KeyError, err.Error())
 			continue
 		}
-		if err := s.cfg.Sink.WritePayload(frame, false); err != nil {
+		started := time.Now()
+		err = s.cfg.Sink.WritePayload(frame, false)
+		s.sinkWriteNanos.Add(uint64(time.Since(started)))
+		if err != nil {
 			s.log.Debug("sink_write_error", logging.KeyError, err.Error())
 			s.shutdown(err)
 			return
@@ -372,6 +389,15 @@ func (s *Session) sendFrame(typ muxproto.FrameType, streamID uint32, seq uint64,
 	if (typ == muxproto.FrameAck || typ == muxproto.FrameWindow) && s.feedbackCh != nil {
 		queue = s.feedbackCh
 	}
+	select {
+	case queue <- f:
+		return nil
+	default:
+	}
+	started := time.Now()
+	s.queueWaits.Add(1)
+	s.queueWaiters.Add(1)
+	defer func() { s.queueWaitNanos.Add(uint64(time.Since(started))); s.queueWaiters.Add(-1) }()
 	select {
 	case queue <- f:
 		return nil
@@ -553,19 +579,24 @@ func (s *Session) Closed() <-chan struct{} { return s.closedCh }
 
 // Stats is a snapshot of session counters.
 type Stats struct {
-	ActiveStreams              int
-	QueuedDataFrames           int
-	QueuedFeedbackFrames       int
-	FeedbackCoalesced          uint64
-	InFlightBytes              int64
-	PacingBytesPerSec          int64
-	FramesSent, FramesReceived uint64
-	BytesSent, BytesReceived   uint64
-	DecodeFailures             uint64
-	DupChunks, ReorderChunks   uint64
-	Retransmits                uint64
-	FastRetransmits            uint64
-	TimeoutRetransmits         uint64
+	ReceiveWindowBytes                         int64
+	CreditWaits, CreditWaitNanos               uint64
+	CreditWaiters                              int64
+	QueueWaits, QueueWaitNanos, SinkWriteNanos uint64
+	QueueWaiters                               int64
+	ActiveStreams                              int
+	QueuedDataFrames                           int
+	QueuedFeedbackFrames                       int
+	FeedbackCoalesced                          uint64
+	InFlightBytes                              int64
+	PacingBytesPerSec                          int64
+	FramesSent, FramesReceived                 uint64
+	BytesSent, BytesReceived                   uint64
+	DecodeFailures                             uint64
+	DupChunks, ReorderChunks                   uint64
+	Retransmits                                uint64
+	FastRetransmits                            uint64
+	TimeoutRetransmits                         uint64
 	// RTO estimator snapshot (milliseconds).
 	SRTTMillis        float64
 	RTOMillis         float64
@@ -583,6 +614,9 @@ func (s *Session) Stats() Stats {
 	srtt, _, rto := s.rtt.snapshot()
 	cwnd, ssthresh, inFlight, maxCwnd, minCwnd, lossEvents := s.cong.snapshot()
 	st := Stats{
+		ReceiveWindowBytes: s.cfg.ReceiveWindow,
+		CreditWaits:        s.creditWaits.Load(), CreditWaitNanos: s.creditWaitNanos.Load(), CreditWaiters: s.creditWaiters.Load(),
+		QueueWaits: s.queueWaits.Load(), QueueWaitNanos: s.queueWaitNanos.Load(), SinkWriteNanos: s.sinkWriteNanos.Load(), QueueWaiters: s.queueWaiters.Load(),
 		FeedbackCoalesced:    s.feedbackCoalesced.Load(),
 		QueuedDataFrames:     len(s.outCh),
 		QueuedFeedbackFrames: len(s.feedbackCh),

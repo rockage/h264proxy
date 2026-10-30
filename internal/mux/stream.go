@@ -32,6 +32,16 @@ const (
 	ackEveryN = 8
 )
 
+func ValidateReceiveWindow(window int64, reliable bool) error {
+	if window == 0 || window == InitialWindow {
+		return nil
+	}
+	if !reliable || window < InitialWindow || window > 4*1024*1024 {
+		return errors.New("mux: receive window must be 256 KiB..4 MiB; expansion requires reliable transport")
+	}
+	return nil
+}
+
 // ErrStreamClosed is returned by operations on a closed stream.
 var ErrStreamClosed = errors.New("mux: stream closed")
 
@@ -78,6 +88,8 @@ type Stream struct {
 	grantedTotal   int64 // cumulative credit granted to the peer
 	lastWindowSent int64 // last cumulative credit we transmitted
 	deliveredAck   int
+	receivedTotal  int64 // unique bytes, including out-of-order data
+	windowExpanded bool
 	dupCount       uint64
 	reorderCount   uint64
 
@@ -142,7 +154,11 @@ func (s *Stream) Read(p []byte) (int, error) {
 			s.recvBuf = s.recvBuf[n:]
 			s.grantedTotal += int64(n)
 			var grant int64
-			if s.grantedTotal-s.lastWindowSent >= windowUpdateThreshold {
+			threshold := s.sess.cfg.ReceiveWindow / 2
+			if threshold == 0 {
+				threshold = windowUpdateThreshold
+			}
+			if s.grantedTotal-s.lastWindowSent >= threshold {
 				grant = s.grantedTotal
 				s.lastWindowSent = s.grantedTotal
 			}
@@ -179,8 +195,18 @@ func (s *Stream) Write(p []byte) (int, error) {
 		p = p[n:]
 
 		s.smu.Lock()
+		var waitStarted time.Time
 		for s.sentBytes+int64(n) > s.maxGrant && !s.sendClosed && !s.sess.isClosed() && s.txError() == nil {
+			if waitStarted.IsZero() {
+				waitStarted = time.Now()
+				s.sess.creditWaits.Add(1)
+				s.sess.creditWaiters.Add(1)
+			}
 			s.scond.Wait()
+		}
+		if !waitStarted.IsZero() {
+			s.sess.creditWaitNanos.Add(uint64(time.Since(waitStarted)))
+			s.sess.creditWaiters.Add(-1)
 		}
 		if s.sendClosed || s.sess.isClosed() {
 			s.smu.Unlock()
@@ -487,6 +513,19 @@ func (s *Stream) onData(seq uint64, data []byte) {
 		return
 	}
 	ackNow := false
+	_, alreadyQueued := s.reorder[seq]
+	if seq >= s.nextRecvSeq && !alreadyQueued {
+		// Duplicates consume no additional credit. Enforce the grant before
+		// expanding it, so a peer cannot allocate beyond the advertised bound.
+		if int64(len(data)) > s.grantedTotal-s.receivedTotal {
+			grant, received := s.grantedTotal, s.receivedTotal
+			s.rmu.Unlock()
+			s.sess.log.Error("receive_credit_exceeded", "stream_id", s.id, "grant", grant, "received", received, "incoming_bytes", len(data))
+			s.sess.shutdown(errors.New("mux: peer exceeded receive credit"))
+			return
+		}
+		s.receivedTotal += int64(len(data))
+	}
 	switch {
 	case seq < s.nextRecvSeq:
 		s.dupCount++
@@ -521,7 +560,21 @@ func (s *Stream) onData(seq uint64, data []byte) {
 		}
 	}
 	ack := s.buildAckLocked()
+	var grant int64
+	if !s.windowExpanded && s.receivedTotal > 0 && s.sess.cfg.ReceiveWindow > InitialWindow {
+		// The first DATA proves the peer knows this stream. Sending WINDOW
+		// before OPEN could race the prioritized feedback queue and be lost.
+		// Old peers already understand cumulative grants: no implicit wire
+		// constant changes or capability-dependent startup assumptions.
+		s.windowExpanded = true
+		s.grantedTotal += s.sess.cfg.ReceiveWindow - InitialWindow
+		s.lastWindowSent = s.grantedTotal
+		grant = s.grantedTotal
+	}
 	s.rmu.Unlock()
+	if grant > 0 {
+		s.sess.sendWindow(s.id, uint64(grant))
+	}
 
 	if ackNow {
 		s.sess.sendAck(s.id, ack)

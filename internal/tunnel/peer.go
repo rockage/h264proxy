@@ -23,12 +23,14 @@ import (
 )
 
 type Config struct {
-	Role mux.Role
-	HTTP string
-	Key  []byte
-	RTC  rtc.Options
-	Rate int
-	Log  *logging.Logger
+	Role                mux.Role
+	HTTP                string
+	Key                 []byte
+	RTC                 rtc.Options
+	Rate                int
+	Log                 *logging.Logger
+	DataChannel         datawire.Config
+	StreamReceiveWindow int64
 }
 
 type Peer struct {
@@ -40,7 +42,8 @@ type Peer struct {
 	once    sync.Once
 }
 
-func (p *Peer) BufferedAmount() uint64 { return p.wire.BufferedAmount() }
+func (p *Peer) BufferedAmount() uint64           { return p.wire.BufferedAmount() }
+func (p *Peer) DataChannelStats() datawire.Stats { return p.wire.Stats() }
 
 // SCTPStats reports the real transport congestion/receive windows and RTT.
 // The mux's cwnd/RTT counters describe application feedback, not SCTP.
@@ -114,6 +117,13 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if cfg.Log == nil {
 		return nil, fmt.Errorf("tunnel: logger required")
 	}
+	wire, err := datawire.NewWithConfig(cfg.DataChannel)
+	if err != nil {
+		return nil, err
+	}
+	if err = mux.ValidateReceiveWindow(cfg.StreamReceiveWindow, true); err != nil {
+		return nil, err
+	}
 	var tcpMux ice.TCPMux
 	if cfg.RTC.Transport == "tcp" && !cfg.RTC.ActiveTCPOnly {
 		host := "0.0.0.0"
@@ -142,7 +152,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Peer{pc: pc, wire: datawire.New(), tcpMux: tcpMux}
+	p := &Peer{pc: pc, wire: wire, tcpMux: tcpMux}
 	defer func() {
 		if err != nil {
 			p.Close()
@@ -282,10 +292,11 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if err = p.wire.Wait(ctx); err != nil {
 		return nil, err
 	}
-	p.Session, err = mux.New(mux.Config{SessionID: sid, Role: cfg.Role, Mode: cryptox.ModeAEAD, Master: cfg.Key, ReliableTransport: true, Sink: p.wire, Source: p.wire, Log: cfg.Log, RateBytesPerSec: cfg.Rate})
+	p.Session, err = mux.New(mux.Config{SessionID: sid, Role: cfg.Role, Mode: cryptox.ModeAEAD, Master: cfg.Key, ReliableTransport: true, ReceiveWindow: cfg.StreamReceiveWindow, Sink: p.wire, Source: p.wire, Log: cfg.Log, RateBytesPerSec: cfg.Rate})
 	if err != nil {
 		return nil, err
 	}
+	cfg.Log.Info("transport_tuning", "datachannel", p.DataChannelStats(), "stream_receive_window", p.Session.Stats().ReceiveWindowBytes)
 	cfg.Log.Info("tunnel_ready", "transport", "datachannel-v1", "datachannel_ordered", true, "ice_path", p.ICEPath(), "ice_protocol", p.ICEProtocol(), "session_id", fmt.Sprintf("%016x", sid))
 	go func() {
 		select {
