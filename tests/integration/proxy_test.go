@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,6 +27,11 @@ import (
 // This builds the proxy with the race detector too: the worker goroutines in
 // the actual subprocesses are checked, not only the test harness.
 func TestTwoProcessSOCKSProxy(t *testing.T) {
+	for _, carrier := range []string{"udp", "tcp"} {
+		t.Run(carrier, func(t *testing.T) { testTwoProcessSOCKSProxy(t, carrier) })
+	}
+}
+func testTwoProcessSOCKSProxy(t *testing.T, carrier string) {
 	if testing.Short() {
 		t.Skip("real two-process WebRTC proxy")
 	}
@@ -46,6 +52,22 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 	if e := os.WriteFile(keyPath, key, 0600); e != nil {
 		t.Fatal(e)
 	}
+	occupied, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var contacted atomic.Bool
+	probeGateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contacted.Store(true)
+		http.Error(w, "unexpected signaling", 500)
+	}))
+	cmd := exec.Command(bin, "-role", "client", "-bypass", "-socks", occupied.Addr().String(), "-key", keyPath, "-http", strings.TrimPrefix(probeGateway.URL, "http://"), "-connect-timeout", "1s")
+	output, bindErr := cmd.CombinedOutput()
+	occupied.Close()
+	probeGateway.Close()
+	if bindErr == nil || !bytes.Contains(output, []byte("SOCKS listener")) || contacted.Load() {
+		t.Fatalf("busy listener consumed gateway session: error=%v contacted=%v output=%s", bindErr, contacted.Load(), output)
+	}
 	sigAddr := fmt.Sprintf("127.0.0.1:%d", freeTCPPort(t))
 	socksAddr := fmt.Sprintf("127.0.0.1:%d", freeTCPPort(t))
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -59,6 +81,13 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 		logPath := filepath.Join(work, role+".log")
 		logs = append(logs, logPath)
 		cmd := exec.CommandContext(ctx, bin, "-role", role, "-http", sigAddr, "-socks", socksAddr, "-key", keyPath, "-connect-timeout", "15s", "-report", report, "-log", logPath)
+		if role == "client" {
+			cmd.Args = append(cmd.Args, "-bypass")
+		}
+		cmd.Args = append(cmd.Args, "-ice-transport", carrier)
+		if carrier == "tcp" && role == "gateway" {
+			cmd.Args = append(cmd.Args, "-ice-tcp-port", fmt.Sprint(freeTCPPort(t)))
+		}
 		cmd.Stderr = os.Stderr
 		if e := cmd.Start(); e != nil {
 			t.Fatal(e)
@@ -68,9 +97,10 @@ func TestTwoProcessSOCKSProxy(t *testing.T) {
 	}
 	ready := false
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
-		c, e := net.DialTimeout("tcp", socksAddr, 100*time.Millisecond)
-		if e == nil {
-			c.Close()
+		// A TCP listener is now reserved before ICE setup. Readiness requires
+		// the post-handshake SOCKS event, not just an accepted kernel connect.
+		b, e := os.ReadFile(logs[1])
+		if e == nil && bytes.Contains(b, []byte(`"event":"socks_listening"`)) {
 			ready = true
 			break
 		}

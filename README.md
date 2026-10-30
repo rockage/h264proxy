@@ -25,7 +25,7 @@ firewall behavior, key retrieval and client connection instructions. This is a
 single-client TCP gateway; installing it does not add automatic client reconnect.
 
 The production `cmd/proxy` now uses a **reliable, ordered WebRTC DataChannel**
-(SCTP over DTLS over ICE/UDP). It does not create a video track or carry proxy
+(SCTP over DTLS over ICE/UDP or ICE/TCP). It does not create a video track or carry proxy
 bytes in RTP. Both peers must upgrade together. See [DATACHANNEL.md](DATACHANNEL.md)
 for the architecture, migration and verification instructions.
 
@@ -45,6 +45,40 @@ accepts destination IPs; the SOCKS-only default DNS policy remains unchanged.
 See **[TUN.md](TUN.md)** for setup, recovery, limitations and verification status.
 
 ---
+
+### Client startup modes
+
+Select a mode explicitly with the unified launcher:
+
+```bash
+# Bypass / SOCKS mode: configure the browser or app to use 127.0.0.1:1080.
+bash scripts/start_proxy.sh --bypass
+
+# TUN mode: use the active macOS network service name.
+H264_TUN_SERVICE=Wi-Fi bash scripts/start_proxy.sh --tun
+
+# Optional sing-box TUN/DNS/automatic routing frontend (build once first).
+bash scripts/build_singbox.sh
+H264_TUN_SERVICE=Wi-Fi bash scripts/start_proxy.sh --sing-box
+```
+
+The switches are mutually exclusive. Stop the current client before switching.
+Bypass mode leaves system routes/DNS untouched and resolves SOCKS hostnames at
+the gateway. TUN mode requires sudo and restores its system routes/DNS on exit.
+Both use the same server/key/ICE carrier settings in `build/client.env`.
+See [sing-box setup and comparison](SINGBOX_TUN.md) for the additional frontend
+and the measured [comparison results](SINGBOX_COMPARISON.md).
+Existing `start_client.sh` and `start_tun.sh` remain supported. Direct binary
+flags are `-bypass` and `-tun` respectively (`-role client` is required).
+
+### Native macOS Network Extension (unsigned development)
+
+A SwiftUI host and `NEPacketTunnelProvider` frontend are available under
+[`apple/`](apple/README.md). Build with `bash scripts/build_ne.sh`; the output is
+`build/apple/H264Proxy.app`. It embeds the existing ICE-TCP engine and uses
+system APIs for routes/DNS. The unsigned App is reviewable, but system VPN
+activation requires signing, matching profiles and user approval. Existing CLI
+modes remain available.
 
 ## Historical H.264 experiments
 

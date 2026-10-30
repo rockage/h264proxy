@@ -17,6 +17,7 @@ type Manager struct {
 	tx               *transaction
 	dns              *dnsProxy
 	child            *exec.Cmd
+	childConfig      string
 	done             chan struct{}
 	childErr         error
 	once             sync.Once
@@ -28,9 +29,9 @@ func (m *Manager) Done() <-chan struct{} { return m.done }
 func (m *Manager) Err() error {
 	<-m.done
 	if m.childErr == nil {
-		return fmt.Errorf("tun2socks exited unexpectedly")
+		return fmt.Errorf("%s exited unexpectedly", m.cfg.BackendName())
 	}
-	return fmt.Errorf("tun2socks: %w", m.childErr)
+	return fmt.Errorf("%s: %w", m.cfg.BackendName(), m.childErr)
 }
 
 func cmd(name string, args ...string) command { return command{Name: name, Args: args} }
@@ -97,6 +98,15 @@ func Start(ctx context.Context, c Config) (_ *Manager, err error) {
 	if serviceDevice(order, c.Service) != iface {
 		return nil, fmt.Errorf("network service %q does not match default interface %s", c.Service, iface)
 	}
+	if c.BackendName() == "sing-box" {
+		out, e := execute(cmd("/sbin/route", "-n", "get", "8.8.8.8"))
+		if e != nil {
+			return nil, e
+		}
+		if got := routeField(out, "interface"); got != iface {
+			return nil, fmt.Errorf("public traffic uses %q instead of physical %q; stop other VPN/TUN before sing-box auto routing", got, iface)
+		}
+	}
 	dns, err := execute(cmd("/usr/sbin/networksetup", "-getdnsservers", c.Service))
 	if err != nil {
 		return nil, err
@@ -109,16 +119,29 @@ func Start(ctx context.Context, c Config) (_ *Manager, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.dns, err = startDNS(ctx, "127.0.0.1:53", c.SOCKS, c.IPv6, c.Log)
-	if err != nil {
+	// Pin and verify transport routes before the first network health probe,
+	// not only before TUN takeover. A VPN route change during the initial
+	// probe otherwise looks like a resolver timeout after ICE disconnects.
+	if err = m.prepareBypass(); err != nil {
 		return nil, err
 	}
-	if err = m.dns.check(ctx); err != nil {
-		return nil, err
+	if c.BackendName() == "sing-box" {
+		if err = m.prepareSingBox(); err != nil {
+			return nil, err
+		}
+	} else {
+		m.dns, err = startDNS(ctx, "127.0.0.1:53", c.SOCKS, c.IPv6, c.Log)
+		if err != nil {
+			return nil, err
+		}
+		if err = m.dns.check(ctx); err != nil {
+			m.logBypassRoutes("initial_dns_health_failed")
+			return nil, err
+		}
+		// Resolve the executable before starting, not via a shell. Do not bind
+		// tun2socks' dialer to the physical NIC: its proxy lives on loopback.
+		m.child = exec.Command(c.Binary, "-device", c.Device, "-proxy", "socks5://"+c.SOCKS, "-mtu", "1500", "-loglevel", "warn")
 	}
-	// Resolve the executable before starting, not via a shell. Do not bind
-	// tun2socks' dialer to the physical NIC: its proxy lives on loopback.
-	m.child = exec.Command(c.Binary, "-device", c.Device, "-proxy", "socks5://"+c.SOCKS, "-mtu", "1500", "-loglevel", "warn")
 	m.child.Stdout, m.child.Stderr = os.Stderr, os.Stderr
 	if err = m.child.Start(); err != nil {
 		m.child = nil
@@ -137,8 +160,17 @@ func Start(ctx context.Context, c Config) (_ *Manager, err error) {
 	ready := false
 	for !ready {
 		if _, e := net.InterfaceByName(c.Device); e == nil {
-			ready = true
-			break
+			if c.BackendName() != "sing-box" {
+				ready = true
+				break
+			}
+			// Interface creation precedes sing-box's automatic route setup.
+			// Do not announce readiness while traffic still uses the old route.
+			out, e := execute(cmd("/sbin/route", "-n", "get", "8.8.8.8"))
+			if e == nil && routeField(out, "interface") == c.Device {
+				ready = true
+				break
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -150,29 +182,29 @@ func Start(ctx context.Context, c Config) (_ *Manager, err error) {
 		case <-ticker.C:
 		}
 	}
-	if _, err = execute(cmd("/sbin/ifconfig", c.Device, "inet", "198.18.0.1", "198.18.0.1", "netmask", "255.255.255.255", "up")); err != nil {
-		return nil, err
-	}
-	if _, err = execute(cmd("/sbin/ifconfig", c.Device, "inet6", "fdfe:dc:264::1", "prefixlen", "128")); err != nil {
-		return nil, err
-	}
-	// Inspect each endpoint's route before adding split defaults. Preserve the
-	// actual interface/gateway (including directly attached LAN candidates).
-	for _, ip := range c.DirectIPs {
-		if err = m.pin(ip); err != nil {
+	if c.BackendName() != "sing-box" {
+		if _, err = execute(cmd("/sbin/ifconfig", c.Device, "inet", "198.18.0.1", "198.18.0.1", "netmask", "255.255.255.255", "up")); err != nil {
 			return nil, err
 		}
-	}
-	if err = ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err = m.installRoutes(); err != nil {
-		return nil, err
+		if _, err = execute(cmd("/sbin/ifconfig", c.Device, "inet6", "fdfe:dc:264::1", "prefixlen", "128")); err != nil {
+			return nil, err
+		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err = m.installRoutes(); err != nil {
+			return nil, err
+		}
 	}
 	if err = m.verifyBypass(); err != nil {
 		return nil, err
 	}
-	if err = m.dns.check(ctx); err != nil {
+	if c.BackendName() == "sing-box" {
+		err = checkSingBoxDNS(ctx)
+	} else {
+		err = m.dns.check(ctx)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("tunnel health after TUN route takeover: %w", err)
 	}
 	if err = m.tx.apply(cmd("/usr/sbin/networksetup", "-setdnsservers", c.Service, "127.0.0.1"), cmd("/usr/sbin/networksetup", append([]string{"-setdnsservers", c.Service}, oldDNS...)...)); err != nil {
@@ -202,6 +234,33 @@ func parseDNS(out string) ([]string, error) {
 	return ips, nil
 }
 
+func (m *Manager) prepareBypass() error {
+	for _, ip := range m.cfg.DirectIPs {
+		if err := m.pin(ip); err != nil {
+			return err
+		}
+	}
+	if err := m.verifyBypass(); err != nil {
+		return err
+	}
+	m.logBypassRoutes("before_initial_dns_health")
+	return nil
+}
+
+func (m *Manager) logBypassRoutes(phase string) {
+	if m.cfg.Log == nil {
+		return
+	}
+	for _, ip := range m.cfg.DirectIPs {
+		out, err := m.tx.run(cmd("/sbin/route", "-n", "get", ip))
+		if err != nil {
+			m.cfg.Log.Warn("tun_transport_route", "phase", phase, "ip", ip, "error", err.Error())
+			continue
+		}
+		m.cfg.Log.Info("tun_transport_route", "phase", phase, "ip", ip, "interface", routeField(out, "interface"), "gateway", routeField(out, "gateway"), "flags", routeField(out, "flags"))
+	}
+}
+
 func (m *Manager) pin(ip string) error {
 	addr := net.ParseIP(ip)
 	if addr == nil || addr.To4() == nil {
@@ -228,13 +287,44 @@ func (m *Manager) pin(ip string) error {
 	if routeField(out, "destination") == ip && flags["HOST"] && flags["STATIC"] && !flags["IFSCOPE"] && !flags["WASCLONED"] {
 		return nil
 	}
+	// macOS may return an IFSCOPE/WASCLONED cache entry even when an
+	// unscoped static host route already exists. Inspect the routing table
+	// before adding, and never journal/delete a pre-existing user route.
+	if table, e := m.tx.run(cmd("/usr/sbin/netstat", "-rn", "-f", "inet")); e == nil && hasStaticHostRoute(table, ip, gw, iface) {
+		return nil
+	}
 	args := []string{"-n", "add", "-host", ip}
 	if net.ParseIP(gw) != nil {
 		args = append(args, gw)
 	} else {
 		args = append(args, "-interface", iface)
 	}
-	return m.tx.apply(cmd("/sbin/route", args...), cmd("/sbin/route", "-n", "delete", "-host", ip))
+	undo := cmd("/sbin/route", "-n", "delete", "-host", ip)
+	undo.RouteGateway, undo.RouteInterface = gw, iface
+	return m.tx.apply(cmd("/sbin/route", args...), undo)
+}
+
+func hasStaticHostRoute(table, ip, gateway, iface string) bool {
+	ifaceColumn := -1
+	for _, line := range strings.Split(table, "\n") {
+		f := strings.Fields(line)
+		if len(f) > 0 && f[0] == "Destination" {
+			for i, name := range f {
+				if name == "Netif" {
+					ifaceColumn = i
+				}
+			}
+			continue
+		}
+		if ifaceColumn < 0 || len(f) <= ifaceColumn || len(f) < 3 {
+			continue
+		}
+		flags := f[2]
+		if f[0] == ip && f[1] == gateway && f[ifaceColumn] == iface && strings.Contains(flags, "H") && strings.Contains(flags, "S") && !strings.ContainsAny(flags, "IW") {
+			return true
+		}
+	}
+	return false
 }
 
 func routeFlags(out string) map[string]bool {
@@ -288,6 +378,9 @@ func (m *Manager) Close() error {
 				_ = m.child.Process.Kill()
 				<-m.done
 			}
+		}
+		if m.childConfig != "" {
+			_ = os.RemoveAll(m.childConfig)
 		}
 	})
 	return m.closeErr

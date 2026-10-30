@@ -15,8 +15,10 @@ import (
 )
 
 type command struct {
-	Name string
-	Args []string
+	Name           string
+	Args           []string
+	RouteGateway   string `json:",omitempty"`
+	RouteInterface string `json:",omitempty"`
 }
 type runner func(command) (string, error)
 
@@ -134,6 +136,16 @@ func (t *transaction) undo(c command) (string, error) {
 			}
 		}
 		if arg == "-host" && i+1 < len(c.Args) {
+			if c.RouteInterface != "" {
+				table, err := t.run(cmd("/usr/sbin/netstat", "-rn", "-f", "inet"))
+				if err != nil {
+					return table, err
+				}
+				if !hasStaticHostRoute(table, c.Args[i+1], c.RouteGateway, c.RouteInterface) {
+					return "", nil
+				}
+				continue
+			}
 			out, err := t.run(cmd("/sbin/route", "-n", "get", c.Args[i+1]))
 			if err != nil {
 				return out, err
@@ -171,21 +183,30 @@ func Recover(path string) error {
 		return fmt.Errorf("TUN owner PID %d is still running; stop it first", s.PID)
 	}
 	t := &transaction{path: path, state: s, run: execute}
-	restoreErr := t.rollback()
 	// SIGKILL of the parent can leave the separately running stack behind.
 	// Check the complete command to avoid signalling a reused unrelated PID.
 	if s.ChildPID > 0 {
 		out, psErr := execute(cmd("/bin/ps", "-ww", "-p", fmt.Sprint(s.ChildPID), "-o", "command="))
 		if psErr == nil {
 			if strings.TrimSpace(out) != s.ChildCommand {
-				return errors.Join(restoreErr, fmt.Errorf("PID %d no longer matches the recorded tun2socks; left it running", s.ChildPID))
+				return fmt.Errorf("PID %d no longer matches the recorded TUN frontend; recovery journal retained", s.ChildPID)
 			}
 			if p, e := os.FindProcess(s.ChildPID); e == nil {
-				if e = p.Kill(); e != nil {
-					return errors.Join(restoreErr, e)
+				// Let sing-box undo automatic routes before considering SIGKILL.
+				if e = p.Signal(os.Interrupt); e != nil {
+					return e
+				}
+				deadline := time.Now().Add(3 * time.Second)
+				for time.Now().Before(deadline) && p.Signal(syscall.Signal(0)) == nil {
+					time.Sleep(50 * time.Millisecond)
+				}
+				if p.Signal(syscall.Signal(0)) == nil {
+					if e = p.Kill(); e != nil {
+						return e
+					}
 				}
 			}
 		}
 	}
-	return restoreErr
+	return t.rollback()
 }

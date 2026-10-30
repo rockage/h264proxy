@@ -24,12 +24,16 @@ type Config struct {
 	Device    string
 	Service   string
 	Binary    string
+	Backend   string
 	StateFile string
 	SOCKS     string
 	DirectIPs []string
 }
 
 func (c Config) Validate() error {
+	if c.BackendName() != "tun2socks" && c.BackendName() != "sing-box" {
+		return fmt.Errorf("-tun-backend must be tun2socks or sing-box")
+	}
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("TUN automatic routing currently supports macOS only")
 	}
@@ -46,13 +50,20 @@ func (c Config) Validate() error {
 		return fmt.Errorf("-tun-state must be an absolute path")
 	}
 	if _, err := exec.LookPath(c.Binary); err != nil {
-		return fmt.Errorf("find tun2socks: %w; run scripts/build_tun.sh first", err)
+		return fmt.Errorf("find %s: %w; build the selected TUN frontend first", c.BackendName(), err)
 	}
 	host, _, err := net.SplitHostPort(c.SOCKS)
 	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return fmt.Errorf("TUN requires a loopback SOCKS listener with an explicit IP address")
 	}
 	return nil
+}
+
+func (c Config) BackendName() string {
+	if c.Backend == "" {
+		return "tun2socks"
+	}
+	return c.Backend
 }
 
 // ResolveBypass is called before changing DNS or routes. ICE uses UDP/IPv4 in

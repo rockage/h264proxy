@@ -48,22 +48,9 @@ func startDNS(parent context.Context, address, socks string, ipv6 bool, log *log
 	if !ok {
 		return nil, fmt.Errorf("SOCKS dialer does not support cancellation")
 	}
-	tr := &http.Transport{
-		Proxy: nil,
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return cd.DialContext(ctx, "tcp", "1.1.1.1:443")
-		},
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-		MaxConnsPerHost:       8,
-		MaxIdleConnsPerHost:   4,
-		ForceAttemptHTTP2:     true,
-		IdleConnTimeout:       90 * time.Second,
-	}
-	ctx, cancel := context.WithCancel(parent)
-	p := &dnsProxy{ipv4Only: !ipv6, log: log, transport: tr, client: &http.Client{Transport: tr, Timeout: 15 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
-		endpoint: "https://cloudflare-dns.com/dns-query", cancel: cancel, slots: make(chan struct{}, 64), lookupCtx: ctx}
+	p := newDNSProxy(parent, cd.DialContext, ipv6, log)
+	ctx, cancel := p.lookupCtx, p.cancel
+	tr := p.transport
 	p.udp, err = net.ListenPacket("udp4", address)
 	if err != nil {
 		cancel()
@@ -83,10 +70,34 @@ func startDNS(parent context.Context, address, socks string, ipv6 bool, log *log
 	return p, nil
 }
 
+func newDNSProxy(parent context.Context, dial func(context.Context, string, string) (net.Conn, error), ipv6 bool, log *logging.Logger) *dnsProxy {
+	tr := &http.Transport{
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dial(ctx, "tcp", "1.1.1.1:443")
+		},
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		MaxConnsPerHost:       8,
+		MaxIdleConnsPerHost:   4,
+		ForceAttemptHTTP2:     true,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	ctx, cancel := context.WithCancel(parent)
+	p := &dnsProxy{ipv4Only: !ipv6, log: log, transport: tr, client: &http.Client{Transport: tr, Timeout: 15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		endpoint: "https://cloudflare-dns.com/dns-query", cancel: cancel, slots: make(chan struct{}, 64), lookupCtx: ctx}
+	return p
+}
+
 func (p *dnsProxy) Close() {
 	p.cancel()
-	p.udp.Close()
-	p.tcp.Close()
+	if p.udp != nil {
+		p.udp.Close()
+	}
+	if p.tcp != nil {
+		p.tcp.Close()
+	}
 	p.wg.Wait()
 	p.lookupWG.Wait()
 	p.transport.CloseIdleConnections()

@@ -32,6 +32,11 @@ const RecvBufferBytes = 16 * 1024 * 1024
 
 // Options configures NewAPI/Config.
 type Options struct {
+	// Transport is udp (default) or tcp for paths with unusable UDP delivery.
+	Transport     string
+	ActiveTCPOnly bool
+	TCPPort       int
+	TCPMux        ice.TCPMux
 	// Network selects real-network mode. When false, loopback mode is used.
 	Network bool
 	// STUNServers are STUN URLs (e.g. "stun:stun.l.google.com:19302") used in
@@ -69,12 +74,22 @@ func newAPI(opts Options, dataOnly bool) (*webrtc.API, error) {
 		se.DetachDataChannels()
 	}
 	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
-	se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	if opts.Transport == "tcp" {
+		if opts.TCPMux == nil && !opts.ActiveTCPOnly {
+			return nil, fmt.Errorf("ICE TCP requires an owned TCP mux")
+		}
+		se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeTCP4})
+		se.SetICETCPMux(opts.TCPMux)
+	} else {
+		se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	}
 
 	if opts.Network {
 		if err := configureNetwork(&se, opts); err != nil {
 			return nil, err
 		}
+	} else if opts.Transport == "tcp" {
+		se.SetIncludeLoopbackCandidate(true)
 	} else {
 		if err := configureLoopback(&se); err != nil {
 			return nil, err
@@ -107,6 +122,9 @@ func configureNetwork(se *webrtc.SettingEngine, opts Options) error {
 	if opts.PublicIP != "" {
 		se.SetNAT1To1IPs([]string{opts.PublicIP}, webrtc.ICECandidateTypeHost)
 	}
+	if opts.Transport == "tcp" {
+		return nil
+	}
 	if opts.UDPPort > 0 {
 		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: opts.UDPPort})
 		if err != nil {
@@ -127,7 +145,7 @@ func configureNetwork(se *webrtc.SettingEngine, opts Options) error {
 // the configured STUN servers; loopback mode uses none.
 func Config(opts Options) webrtc.Configuration {
 	cfg := webrtc.Configuration{ICEServers: []webrtc.ICEServer{}}
-	if opts.Network {
+	if opts.Network && opts.Transport != "tcp" {
 		for _, u := range opts.STUNServers {
 			if u != "" {
 				cfg.ICEServers = append(cfg.ICEServers, webrtc.ICEServer{URLs: []string{u}})

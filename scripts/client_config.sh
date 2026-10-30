@@ -14,8 +14,8 @@ h264_load_client_config() {
   values="$(python3 - "$config" <<'PY'
 import pathlib, shlex, sys
 allowed = {
-    'H264_ENDPOINT', 'H264_SSH', 'H264_KEY', 'H264_SOCKS', 'H264_STUN',
-    'H264_TUN_SERVICE', 'H264_TUN_DEVICE', 'H264_RESTART_GATEWAY', 'H264_PUBLIC_IP',
+    'H264_ENDPOINT', 'H264_SSH', 'H264_KEY', 'H264_SOCKS', 'H264_STUN', 'H264_ICE_TRANSPORT',
+    'H264_TUN_SERVICE', 'H264_TUN_DEVICE', 'H264_TUN_BACKEND', 'H264_RESTART_GATEWAY', 'H264_PUBLIC_IP',
 }
 path = pathlib.Path(sys.argv[1])
 try:
@@ -51,6 +51,7 @@ PY
 }
 
 h264_require_client_target() {
+ case "${H264_ICE_TRANSPORT:-udp}" in udp|tcp) ;; *) echo "H264_ICE_TRANSPORT 仅支持 udp 或 tcp。" >&2; return 1;; esac
   if [[ -z "${H264_ENDPOINT:-}" ]]; then
     echo '未设置 VPS 地址。请在 build/client.env 中填写 H264_ENDPOINT 和 H264_SSH，或通过环境变量指定。' >&2
     echo '配置示例：scripts/client.env.example；不再默认连接任何历史测试 VPS。' >&2
@@ -77,4 +78,47 @@ except ValueError:
 PY
 	if [[ "$?" != 0 ]]; then return 1; fi
   printf '连接目标：%s；网关 SSH：%s\n' "$H264_ENDPOINT" "${H264_SSH:-未配置（不重启）}"
+}
+
+# Test binding, not merely connectability: an occupied socket need not accept
+# connections yet. The proxy itself reserves the listener atomically at startup.
+h264_check_socks_port() {
+  python3 - "$1" <<'PYPORT'
+import socket, sys
+address = sys.argv[1]
+try:
+    host, port = address.rsplit(':', 1)
+    host = host.strip('[]')
+    family = socket.AF_INET6 if ':' in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind((host, int(port)))
+except (OSError, ValueError) as error:
+    print(f'SOCKS 监听地址 {address} 不可用：{error}。请先停止占用该地址的客户端，或显式设置 H264_SOCKS 使用其他空闲端口。', file=sys.stderr)
+    sys.exit(1)
+PYPORT
+}
+
+# Read-only preflight, before sudo or a shared gateway restart. A comparison
+# through another VPN is neither a physical-path test nor safe auto routing.
+h264_check_tun_path() {
+  python3 - "$H264_ENDPOINT" <<'PYROUTE'
+import re, socket, subprocess, sys
+def interface(target):
+    r = subprocess.run(['/sbin/route', '-n', 'get', target], capture_output=True, text=True, check=True)
+    m = re.search(r'^\s*interface:\s*(\S+)', r.stdout, re.M)
+    if not m: raise RuntimeError('无法识别出口网卡')
+    return m[1]
+try:
+    host = sys.argv[1].rsplit(':', 1)[0].strip('[]')
+    physical = interface('default')
+    targets = {'8.8.8.8'} | {x[4][0] for x in socket.getaddrinfo(host, None, socket.AF_INET)}
+    for target in targets:
+        got = interface(target)
+        if physical.startswith('utun') or got != physical:
+            raise RuntimeError(f'{target} 使用 {got}，物理默认出口为 {physical}；请先停止其他 VPN/TUN，再启动。尚未重启 VPS 或修改网络。')
+except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+    print(error, file=sys.stderr)
+    sys.exit(1)
+PYROUTE
 }

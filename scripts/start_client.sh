@@ -7,6 +7,7 @@ h264_load_client_config "$ROOT"
 h264_require_client_target
 REMOTE="${H264_SSH:-}"
 ENDPOINT="$H264_ENDPOINT"
+TRANSPORT="${H264_ICE_TRANSPORT:-udp}"
 SOCKS="${H264_SOCKS:-127.0.0.1:1080}"
 STUN="${H264_STUN-stun:stun.l.google.com:19302}"
 KEY="${H264_KEY:-$ROOT/build/proxy-vps.key}"
@@ -19,6 +20,8 @@ if [[ ! -x "$BIN" || ! -f "$KEY" ]]; then
   echo "缺少客户端程序或共享密钥，请先完成 VPS 部署。" >&2
   exit 1
 fi
+# Reject an already active TUN/SOCKS listener before restarting the shared VPS.
+h264_check_socks_port "$SOCKS"
 if ! mkdir "$LOCK" 2>/dev/null; then
   owner="$(cat "$LOCK/owner" 2>/dev/null || true)"
   if [[ "$owner" =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
@@ -52,8 +55,8 @@ echo "准备 VPS 网关会话：$REMOTE"
 if [[ "${H264_RESTART_GATEWAY:-1}" == 1 ]]; then
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" 'systemctl restart h264proxy.service'
 fi
-echo "启动 SOCKS5：${SOCKS}（此窗口保持运行；Ctrl-C 停止）"
-"$BIN" -role client -net -http "$ENDPOINT" -stun "$STUN" \
+echo "启动旁路模式，SOCKS5：${SOCKS}（此窗口保持运行；Ctrl-C 停止）"
+"$BIN" -role client -bypass -net -ice-transport "$TRANSPORT" -http "$ENDPOINT" -stun "$STUN" \
   -key "$KEY" -socks "$SOCKS" -connect-timeout 60s \
   -log "$ROOT/build/logs/proxy-client.log" \
   -report "$ROOT/build/logs/proxy-client-report.json" &

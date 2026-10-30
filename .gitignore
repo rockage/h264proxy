@@ -30,3 +30,8 @@ wrong.bin
 # Installer test bytecode
 __pycache__/
 *.py[cod]
+
+# Local Apple signing settings and provisioning profiles
+apple/macos/Config/Local.xcconfig
+*.provisionprofile
+*.mobileprovision

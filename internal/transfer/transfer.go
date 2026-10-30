@@ -42,6 +42,12 @@ type PacketSource interface {
 	ReadPayload() (payload []byte, marker bool, err error)
 }
 
+// BufferedPacketSource optionally reads into caller-owned storage. The caller
+// consumes the packet before reusing dst; the source must not retain dst.
+type BufferedPacketSource interface {
+	ReadPayloadInto(dst []byte) (n int, marker bool, err error)
+}
+
 // SendOptions configures a send.
 type SendOptions struct {
 	SessionID uint64

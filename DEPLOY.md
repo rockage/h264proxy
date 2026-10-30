@@ -149,3 +149,8 @@ Look at `mux_cli.json`:
 - The media really traverses WebRTC/SRTP; only SDP + a done-barrier use HTTP.
 - The server binary is static (no libc); its CPU architecture must match the VPS.
 - Keep `key.bin` private; delete the `/tmp` copies when done.
+
+Live 207 deployment note (2026-10-30): `h264proxy.service` currently binds both
+TCP signaling and UDP ICE to port 9300. Its native nftables firewall must allow
+**9300/udp** as well as **9300/tcp**. The historical 9301/udp example above is
+only correct when the running gateway actually uses `UDP_PORT=9301`.

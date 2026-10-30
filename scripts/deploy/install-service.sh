@@ -4,6 +4,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PUBLIC_IP="${PUBLIC_IP:?请设置当前 VPS 的 PUBLIC_IP，不再默认使用历史测试地址}"
 PORT="${PORT:-9300}"
+ICE_TRANSPORT="${ICE_TRANSPORT:-udp}"
+ICE_TCP_PORT="${ICE_TCP_PORT:-9301}"
+case "$ICE_TRANSPORT" in udp|tcp) ;; *) echo "Invalid ICE_TRANSPORT" >&2; exit 1;; esac
+if [[ ! "$ICE_TCP_PORT" =~ ^[0-9]+$ ]] || (( ICE_TCP_PORT < 1 || ICE_TCP_PORT > 65535 )); then echo "Invalid ICE_TCP_PORT" >&2; exit 1; fi
 if ! getent passwd h264proxy >/dev/null; then
   useradd --system --home-dir /var/lib/h264proxy --shell /sbin/nologin h264proxy
 fi
@@ -17,6 +21,8 @@ chown root:h264proxy /etc/h264proxy/key.bin
 chmod 640 /etc/h264proxy/key.bin
 cat > /etc/h264proxy/gateway.env <<CONFIG
 PUBLIC_IP=$PUBLIC_IP
+ICE_TRANSPORT=$ICE_TRANSPORT
+ICE_TCP_PORT=$ICE_TCP_PORT
 UDP_PORT=$PORT
 HTTP_ADDR=0.0.0.0:$PORT
 CONFIG
@@ -29,8 +35,14 @@ if command -v restorecon >/dev/null; then
   restorecon -RF /opt/h264proxy/bin /etc/h264proxy /var/lib/h264proxy /etc/systemd/system/h264proxy.service
 fi
 systemd-analyze verify /etc/systemd/system/h264proxy.service
-firewall-cmd --zone=public --add-port="$PORT/tcp" --add-port="$PORT/udp"
-firewall-cmd --permanent --zone=public --add-port="$PORT/tcp" --add-port="$PORT/udp"
+if command -v firewall-cmd >/dev/null && timeout 5 firewall-cmd --state >/dev/null 2>&1; then
+  carrier_port="$PORT/udp"
+  if [[ "$ICE_TRANSPORT" == tcp ]]; then carrier_port="$ICE_TCP_PORT/tcp"; fi
+  firewall-cmd --zone=public --add-port="$PORT/tcp" --add-port="$carrier_port"
+  firewall-cmd --permanent --zone=public --add-port="$PORT/tcp" --add-port="$carrier_port"
+else
+  echo "请在现有防火墙中放行信令 TCP $PORT，以及 $ICE_TRANSPORT 对应的传输端口（UDP $PORT 或 TCP $ICE_TCP_PORT）。"
+fi
 systemctl daemon-reload
 systemctl enable --now h264proxy.service
 sleep 1

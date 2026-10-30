@@ -31,6 +31,8 @@ func main() {
 	netMode := flag.Bool("net", false, "use real-network ICE instead of loopback")
 	publicIP := flag.String("public-ip", "", "gateway public IP candidate")
 	udpPort := flag.Int("udp-port", 0, "fixed local ICE UDP port")
+	iceTransport := flag.String("ice-transport", "udp", "ICE carrier: udp or tcp (both peers must support selected carrier)")
+	iceTCPPort := flag.Int("ice-tcp-port", 0, "ICE TCP listener port; gateway should specify a fixed port separate from HTTP")
 	stun := flag.String("stun", "", "comma-separated STUN URLs")
 	rate := flag.Int("rate", 0, "aggregate sender rate ceiling in bytes/sec (0=unlimited)")
 	setup := flag.Duration("connect-timeout", 45*time.Second, "tunnel setup timeout")
@@ -41,11 +43,14 @@ func main() {
 	logPath := flag.String("log", "", "optional structured log file")
 	report := flag.String("report", "", "write final mux statistics on exit")
 	statsInterval := flag.Duration("stats-interval", 5*time.Second, "log live transport counters at this interval (0=disabled)")
+	bypassEnabled := flag.Bool("bypass", false, "client: explicit SOCKS-only mode; leave system routes and DNS unchanged (mutually exclusive with -tun)")
 	tunEnabled := flag.Bool("tun", false, "client: enable macOS TUN TCP proxy and DNS over the tunnel (requires root)")
 	tunIPv6 := flag.Bool("tun-ipv6", false, "allow AAAA/HTTPS/SVCB DNS records in TUN mode (requires working gateway IPv6)")
 	tunDevice := flag.String("tun-device", "utun123", "unused macOS utun device")
 	tunService := flag.String("tun-service", "", "active macOS network service, e.g. Wi-Fi or Ethernet (required with -tun)")
 	tunBinary := flag.String("tun2socks", "tun2socks", "path to tun2socks executable")
+	tunBackend := flag.String("tun-backend", "tun2socks", "TUN frontend: tun2socks or sing-box")
+	singBoxBinary := flag.String("sing-box", "sing-box", "path to sing-box 1.14.4 executable")
 	tunState := flag.String("tun-state", "/Library/Application Support/H264Proxy/tun-state.json", "absolute recovery journal path")
 	tunRecover := flag.Bool("tun-recover", false, "restore DNS/routes from -tun-state after an abnormal exit, then exit")
 	flag.Parse()
@@ -58,7 +63,15 @@ func main() {
 		fmt.Println("TUN DNS/routes restored")
 		return
 	}
+	if *bypassEnabled && (*tunEnabled || *role != "client") {
+		fmt.Fprintln(os.Stderr, "-bypass requires -role client and is mutually exclusive with -tun")
+		os.Exit(2)
+	}
 	tc := tun.Config{IPv6: *tunIPv6, Enabled: *tunEnabled, Device: *tunDevice, Service: *tunService, Binary: *tunBinary, StateFile: *tunState, SOCKS: *socksAddr}
+	tc.Backend = *tunBackend
+	if tc.Backend == "sing-box" {
+		tc.Binary = *singBoxBinary
+	}
 	if tc.Enabled {
 		if *role != "client" || !*netMode {
 			fmt.Fprintln(os.Stderr, "-tun requires -role client -net")
@@ -76,6 +89,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "-role must be gateway or client")
 		os.Exit(2)
 	}
+	if (*iceTransport != "udp" && *iceTransport != "tcp") || *iceTCPPort < 0 || *iceTCPPort > 65535 {
+		fmt.Fprintln(os.Stderr, "invalid ICE transport or TCP port")
+		os.Exit(2)
+	}
 	if *rate < 0 || *max <= 0 || *setup <= 0 || *handshake <= 0 || *dial <= 0 || *idle < 0 || *statsInterval < 0 {
 		fmt.Fprintln(os.Stderr, "invalid rate, connection limit or timeout")
 		os.Exit(2)
@@ -88,7 +105,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err = run(ctx, *role, *socksAddr, *keyPath, *report, *setup, tunnel.Config{
 		HTTP: *httpAddr, Rate: *rate, Log: log,
-		RTC: rtc.Options{Network: *netMode, PublicIP: *publicIP, UDPPort: *udpPort, STUNServers: splitCSV(*stun)},
+		RTC: rtc.Options{Transport: *iceTransport, TCPPort: *iceTCPPort, Network: *netMode, PublicIP: *publicIP, UDPPort: *udpPort, STUNServers: splitCSV(*stun)},
 	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log}, *statsInterval, tc)
 	stop()
 	if err != nil {
@@ -108,10 +125,24 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 	if err != nil {
 		return err
 	}
+	if cfg.RTC.Transport == "tcp" {
+		cfg.RTC.STUNServers = nil
+	}
 	cfg.Key = key
 	cfg.Role = mux.RoleListener
 	if role == "client" {
 		cfg.Role = mux.RoleDialer
+	}
+	// Reserve the listener before consuming the gateway's single-peer session.
+	// A failed bind must never establish and then close a working tunnel.
+	var ln net.Listener
+	if role == "client" {
+		ln, err = net.Listen("tcp", socksAddr)
+		if err != nil {
+			return fmt.Errorf("SOCKS listener %s: %w", socksAddr, err)
+		}
+		defer ln.Close()
+		cfg.Log.Info("socks_reserved", "addr", ln.Addr().String())
 	}
 	// Setup is bounded independently of the long-lived service context.
 	timer := time.AfterFunc(setup, cancel)
@@ -145,11 +176,11 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 	if role == "gateway" {
 		err = socks.ServeGateway(ctx, peer.Session, sc)
 	} else {
-		ln, e := net.Listen("tcp", socksAddr)
-		if e != nil {
-			return e
+		mode := "bypass"
+		if tc.Enabled {
+			mode = "tun"
 		}
-		defer ln.Close()
+		cfg.Log.Info("client_mode", "mode", mode)
 		cfg.Log.Info("socks_listening", "addr", ln.Addr().String())
 		cfg.Log.Info("dns_policy", "remote_dns_only", sc.RequireDomain, "resolver", "gateway")
 		err = serveClient(ctx, ln, peer, cfg, sc, tc)
@@ -184,6 +215,9 @@ func serveClient(ctx context.Context, ln net.Listener, peer *tunnel.Peer, cfg tu
 	tc.Log = cfg.Log
 	m, err := tun.Start(ctx, tc)
 	if err != nil {
+		if state := peer.ConnectionState(); state != "connected" {
+			return fmt.Errorf("TUN setup failed with transport state %s: %w", state, err)
+		}
 		return err
 	}
 	defer func() {
@@ -193,7 +227,7 @@ func serveClient(ctx context.Context, ln net.Listener, peer *tunnel.Peer, cfg tu
 			result = fmt.Errorf("TUN restore failed: %v (client result: %v)", err, result)
 		}
 	}()
-	cfg.Log.Info("tun_ready", "device", tc.Device, "network_service", tc.Service, "dns", "DoH through SOCKS", "dns_ipv6", tc.IPv6, "udp", "unsupported", "bypass_ips", tc.DirectIPs)
+	cfg.Log.Info("tun_ready", "backend", tc.BackendName(), "device", tc.Device, "network_service", tc.Service, "dns", "DoH through SOCKS", "dns_ipv6", tc.IPv6, "udp", "unsupported", "bypass_ips", tc.DirectIPs)
 	select {
 	case <-done:
 		return serveErr
@@ -215,7 +249,7 @@ func logTransportStats(ctx context.Context, peer *tunnel.Peer, log *logging.Logg
 		case <-sess.Closed():
 			return
 		case <-ticker.C:
-			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "ice_protocol", peer.ICEProtocol(), "buffered_amount", peer.BufferedAmount(), "sctp", peer.SCTPStats())
+			log.Info("mux_stats", "stats", sess.Stats(), "transport", "datachannel-v1", "ice_protocol", peer.ICEProtocol(), "pc_state", peer.ConnectionState(), "ice_path", peer.ICEPath(), "buffered_amount", peer.BufferedAmount(), "sctp", peer.SCTPStats())
 		}
 	}
 }

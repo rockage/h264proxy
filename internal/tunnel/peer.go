@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 	cryptox "github.com/roca/h264-tunnel-lab/internal/crypto"
 	"github.com/roca/h264-tunnel-lab/internal/datawire"
@@ -34,6 +35,7 @@ type Peer struct {
 	Session *mux.Session
 	pc      *webrtc.PeerConnection
 	wire    *datawire.Channel
+	tcpMux  ice.TCPMux
 	http    *http.Server
 	once    sync.Once
 }
@@ -43,6 +45,22 @@ func (p *Peer) BufferedAmount() uint64 { return p.wire.BufferedAmount() }
 // SCTPStats reports the real transport congestion/receive windows and RTT.
 // The mux's cwnd/RTT counters describe application feedback, not SCTP.
 func (p *Peer) SCTPStats() webrtc.SCTPTransportStats { return p.pc.SCTP().Stats() }
+
+func (p *Peer) ConnectionState() string { return p.pc.ConnectionState().String() }
+
+// ICEPath identifies the actual selected endpoints, not just the signaling IP.
+func (p *Peer) ICEPath() map[string]any {
+	s := p.pc.SCTP()
+	if s == nil || s.Transport() == nil {
+		return nil
+	}
+	ice := s.Transport().ICETransport()
+	pair, err := ice.GetSelectedCandidatePair()
+	if err != nil || pair == nil {
+		return nil
+	}
+	return map[string]any{"local_ip": pair.Local.Address, "local_port": pair.Local.Port, "local_type": pair.Local.Typ.String(), "remote_ip": pair.Remote.Address, "remote_port": pair.Remote.Port, "remote_type": pair.Remote.Typ.String(), "protocol": pair.Remote.Protocol.String()}
+}
 
 func (p *Peer) ICEProtocol() string {
 	pair, err := p.pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
@@ -83,6 +101,9 @@ func (p *Peer) Close() error {
 			p.http.Close()
 		}
 		p.pc.Close()
+		if p.tcpMux != nil {
+			p.tcpMux.Close()
+		}
 
 	})
 	return nil
@@ -93,6 +114,26 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if cfg.Log == nil {
 		return nil, fmt.Errorf("tunnel: logger required")
 	}
+	var tcpMux ice.TCPMux
+	if cfg.RTC.Transport == "tcp" && !cfg.RTC.ActiveTCPOnly {
+		host := "0.0.0.0"
+		if !cfg.RTC.Network {
+			host = "127.0.0.1"
+		}
+		ln, e := net.Listen("tcp4", net.JoinHostPort(host, fmt.Sprint(cfg.RTC.TCPPort)))
+		if e != nil {
+			return nil, fmt.Errorf("listen ICE TCP: %w", e)
+		}
+		// Blocking writes preserve reliable ICE-TCP delivery instead of dropping
+		// packets when an additional TCP-mux write queue fills.
+		tcpMux = ice.NewTCPMuxDefault(ice.TCPMuxParams{Listener: ln, ReadBufferSize: 64 * 1024, WriteBufferSize: 0})
+		cfg.RTC.TCPMux = tcpMux
+		defer func() {
+			if err != nil {
+				tcpMux.Close()
+			}
+		}()
+	}
 	api, err := rtc.NewDataAPI(cfg.RTC)
 	if err != nil {
 		return nil, err
@@ -101,13 +142,14 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Peer{pc: pc, wire: datawire.New()}
+	p := &Peer{pc: pc, wire: datawire.New(), tcpMux: tcpMux}
 	defer func() {
 		if err != nil {
 			p.Close()
 		}
 	}()
-	// One negotiated, reliable and ordered channel. Fixed ID avoids an untrusted
+	// One negotiated reliable channel. The mux preserves per-stream byte order.
+	// Fixed ID avoids an untrusted
 	// peer opening extra channels; both roles configure exactly the same channel.
 	negotiated, ordered, id := true, true, uint16(0)
 	dc, err := pc.CreateDataChannel("proxy-v1", &webrtc.DataChannelInit{Negotiated: &negotiated, Ordered: &ordered, ID: &id})
@@ -133,7 +175,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	connected, failed := make(chan struct{}), make(chan struct{})
 	var connOnce, failOnce sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		cfg.Log.Info("pc_state_change", "state", state.String())
+		cfg.Log.Info("pc_state_change", "state", state.String(), "ice_path", p.ICEPath())
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
 			connOnce.Do(func() { close(connected) })
@@ -244,7 +286,7 @@ func Open(ctx context.Context, cfg Config) (_ *Peer, err error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Log.Info("tunnel_ready", "transport", "datachannel-v1", "ice_protocol", p.ICEProtocol(), "session_id", fmt.Sprintf("%016x", sid))
+	cfg.Log.Info("tunnel_ready", "transport", "datachannel-v1", "datachannel_ordered", true, "ice_path", p.ICEPath(), "ice_protocol", p.ICEProtocol(), "session_id", fmt.Sprintf("%016x", sid))
 	go func() {
 		select {
 		case <-ctx.Done():

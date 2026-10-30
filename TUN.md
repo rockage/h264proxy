@@ -1,5 +1,9 @@
 # macOS TUN frontend (first stage)
 
+An additional sing-box frontend is now selectable with `--sing-box`; the
+existing `--tun` remains tun2socks. See [sing-box setup and controlled
+comparison](SINGBOX_TUN.md). Both reuse the same transport and recovery journal.
+
 The optional TUN frontend reuses the existing SOCKS5 client and WebRTC
 DataChannel transport. The VPS gateway and wire protocol do not change.
 The default SOCKS-only mode keeps its existing remote-domain-only policy.
@@ -288,3 +292,89 @@ are logged as `tun_dns_query_failed` with the query name, duration and error.
 After switching DNS, startup flushes both the directory-service DNS cache and
 mDNSResponder. Applications with their own DNS caches or secure DNS settings
 may require restarting or disabling their custom resolver to follow this policy.
+
+## Reliable transport queue and receive-buffer optimization
+
+Reliable DataChannel sessions coalesce queued ACK and WINDOW updates by stream
+and frame type. Cumulative acknowledgment and credit cannot regress; final
+close acknowledgments and selective ranges survive merging. A FIFO of distinct
+keys preserves fairness, with DATA admitted after eight feedback frames. The
+queue has a 4096-entry memory bound; exceeding it terminates the session rather
+than silently losing credit or blocking the receive thread behind network I/O.
+Legacy RTP feedback and recovery are unchanged. `FeedbackCoalesced` in live mux
+statistics counts updates replaced by newer cumulative state.
+
+The mux uses an optional caller-owned receive-buffer interface for DataChannel
+messages. It consumes/decrypts each message before the next read; retained stream
+data is copied. Existing `ReadPayload` callers still receive independent storage.
+The new receive interface eliminates the former 32 KiB allocation per message;
+it does not eliminate decryption, reassembly or other transport allocations.
+
+2026-10-30 staged measurements used a SHA256-verified 4 MiB file served on the
+207.148.110.180 gateway's loopback interface, with three serial downloads then
+four concurrent downloads. Both client and gateway were switched together.
+The client-to-gateway path traversed v2rayN to keep the chat connected, so these
+are SOCKS tunnel comparisons under that route, not physical direct-path or
+full-system TUN benchmarks. Short sequential trials are sensitive to network
+variation and SCTP warm-up; do not interpret their differences as a guaranteed
+throughput improvement. Raw results are in the ignored `build/perf-20261030/`.
+
+Transport bypass routes are now pinned and verified before the initial DoH
+probe, then verified again after split-default takeover. This protects the
+startup probe from later broader route changes and reports conflicting VPN
+routes before attributing failure to DNS. On macOS a scoped cloned lookup can
+hide an existing unscoped static /32; the routing table is checked so an existing
+user route is reused without being claimed for cleanup. `tun_transport_route`
+records the route before the probe and again if it fails. Connection events and
+live counters include selected ICE endpoints; setup errors also identify a
+transport that is no longer connected. These diagnostics do not establish why
+a historical UDP path failed or guarantee recovery from every network change.
+
+### ICE fails before DNS: check the actual UDP listener and host firewall
+
+On 2026-10-30 the 207 gateway listened on TCP 9300 and UDP 9300, but its native
+nftables input chain had a drop policy and allowed TCP 9300 plus UDP 9301 only.
+An explicit UDP 9300 accept rule was added live and to
+`/etc/sysconfig/nftables.conf`, with the original configuration backed up and
+`nft -c -f` validation performed before saving. Existing rules were preserved;
+the full ruleset was not flushed or reloaded. Three probes bound to the client
+physical Wi-Fi reached the new rule (counter 0 to 3), and tunneled DoH/HTTPS
+checks passed. A historical example using UDP 9301 is not the live service's
+configuration. Check the unit/environment, `ss -lunp`, and the active nftables
+rules together; successful TCP signaling does not establish UDP reachability.
+
+## Explicit ICE TCP mode for a poor UDP path
+
+`-ice-transport tcp` selects ICE-TCP on both peers. The gateway also sets
+`-ice-tcp-port 9301`, separate from TCP 9300 HTTP signaling. `H264_ICE_TRANSPORT=tcp`
+in `build/client.env` makes both client launchers select it; the general default
+remains UDP. The deployment unit reads `ICE_TRANSPORT` and `ICE_TCP_PORT` from
+`gateway.env`, which the install helper now writes. TCP mode does not gather
+UDP STUN candidates. The selected path is logged as `ice_protocol: tcp`.
+
+On 2026-10-30 a physical Wi-Fi-to-207 UDP control (one stream, no TUN frontend)
+received only 1,667,072 bytes in 60 seconds; unordered SCTP message delivery
+received 1,449,984 bytes in 45 seconds and did not solve the problem. Production
+therefore retains ordered, reliable delivery. A same-file ICE-TCP control
+completed 4,194,304 bytes in 11.552627 seconds (about 2.90 Mbps), SHA256 verified,
+with concurrent DoH/IPv4 DNS checks passing. This is a measured alternative for
+that path, not a claim that ICE-TCP is faster on every network. Both still use
+SCTP/DTLS and mux encryption. UDP mode remains selectable after updating both
+peer configurations. Full-system TUN performance still needs user validation.
+
+## Explicit startup switches
+
+`bash scripts/start_proxy.sh --bypass` starts the existing SOCKS-only client;
+`H264_TUN_SERVICE=Wi-Fi bash scripts/start_proxy.sh --tun` starts the TUN client.
+The launcher requires exactly one switch and rejects mixed/unknown options
+before any sudo or gateway restart. The binary also accepts explicit `-bypass`
+and `-tun` client flags and rejects enabling both. Startup logs `client_mode`
+with `bypass` or `tun`. Stop the old client before switching modes. The bypass
+launcher checks for an occupied SOCKS listener before restarting the gateway,
+matching the TUN launcher's existing guard.
+
+The client reserves its SOCKS listener before opening a WebRTC session. An
+occupied address therefore fails locally without consuming the gateway's
+single-peer signaling session. Both launchers test actual socket binding before
+their gateway restart step. `socks_reserved` identifies the initial reservation;
+`socks_listening` is emitted only after tunnel setup and indicates readiness.

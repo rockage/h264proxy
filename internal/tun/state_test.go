@@ -272,3 +272,85 @@ func TestRecoveryAfterDeviceExitLeavesOtherVPNRoutesAlone(t *testing.T) {
 		t.Fatalf("stale journal remains: %v", err)
 	}
 }
+
+func TestPrepareBypassPinsBeforeInitialHealthProbe(t *testing.T) {
+	var calls []command
+	run := func(c command) (string, error) {
+		calls = append(calls, c)
+		if len(c.Args) > 1 && c.Args[1] == "get" {
+			return "destination: default\ngateway: 192.168.1.1\ninterface: en1\n", nil
+		}
+		return "", nil
+	}
+	tx, err := newTransaction(filepath.Join(t.TempDir(), "state"), run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := Manager{cfg: Config{DirectIPs: []string{"203.0.113.1", "203.0.113.2"}}, tx: tx}
+	if err := m.prepareBypass(); err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.state.Undo) != 2 || len(m.bypassInterfaces) != 2 {
+		t.Fatal("not all transport routes were pinned")
+	}
+	// Both static route additions must precede the final effective-route checks.
+	n := len(calls)
+	if calls[n-2].Args[1] != "get" || calls[n-1].Args[1] != "get" {
+		t.Fatal("routes were not verified before returning to the probe")
+	}
+}
+
+func TestBypassPreservesStaticRouteHiddenByScopedClone(t *testing.T) {
+	mutated := false
+	run := func(c command) (string, error) {
+		if c.Name == "/usr/sbin/netstat" {
+			return "Destination Gateway Flags Netif Expire\n203.0.113.1 192.168.1.1 UGHS en1\n", nil
+		}
+		if len(c.Args) > 1 && c.Args[1] == "get" {
+			return "destination: 203.0.113.1\ngateway: 192.168.1.1\ninterface: en1\nflags: <UP,GATEWAY,HOST,WASCLONED,IFSCOPE>\n", nil
+		}
+		mutated = true
+		return "", nil
+	}
+	tx, err := newTransaction(filepath.Join(t.TempDir(), "state"), run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := Manager{tx: tx}
+	if err := m.pin("203.0.113.1"); err != nil {
+		t.Fatal(err)
+	}
+	if mutated || len(tx.state.Undo) != 0 {
+		t.Fatal("existing user route was claimed or replaced")
+	}
+	for _, flags := range []string{"UGSc", "UGHWI", "UGHIS"} {
+		if hasStaticHostRoute("Destination Gateway Flags Netif\n203.0.113.1 192.168.1.1 "+flags+" en1\n", "203.0.113.1", "192.168.1.1", "en1") {
+			t.Fatalf("unsafe route reused: %s", flags)
+		}
+	}
+}
+
+func TestRecoveryUsesJournaledHostRouteOwnership(t *testing.T) {
+	for _, gateway := range []string{"192.168.1.1", "192.168.1.254"} {
+		t.Run(gateway, func(t *testing.T) {
+			deleted := false
+			run := func(c command) (string, error) {
+				if c.Name == "/usr/sbin/netstat" {
+					return "Destination Gateway Flags Netif\n203.0.113.1 " + gateway + " UGHS en1\n", nil
+				}
+				deleted = true
+				return "", nil
+			}
+			tx := &transaction{run: run}
+			c := cmd("/sbin/route", "-n", "delete", "-host", "203.0.113.1")
+			c.RouteGateway = "192.168.1.1"
+			c.RouteInterface = "en1"
+			if _, err := tx.undo(c); err != nil {
+				t.Fatal(err)
+			}
+			if deleted != (gateway == "192.168.1.1") {
+				t.Fatalf("ownership mismatch: gateway=%s deleted=%v", gateway, deleted)
+			}
+		})
+	}
+}

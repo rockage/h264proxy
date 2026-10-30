@@ -1,0 +1,428 @@
+// !$*UTF8*$!
+{
+	"archiveVersion" = 1;
+	"classes" = {
+	};
+	"objectVersion" = 56;
+	"objects" = {
+		"52709DFC15896E15CFBA8810" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "App/H264ProxyApp.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"61C5822ED106F7D98DE53020" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/Configuration.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"A9AD141841DDB42E5BFC7183" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/Keychain.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"8E97026629D05F1D3B7F27AC" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "PacketTunnel/PacketTunnelProvider.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"624A8F936E0903B5DF7F6FC4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "App/Info.plist";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"B813F16BDC02AC6F98158E40" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "App/App.entitlements";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"BB710B1E02BDF9E367C508A6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "PacketTunnel/Info.plist";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"F99D437CC95359B1EB37117C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "PacketTunnel/PacketTunnel.entitlements";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"1447C8C0F3F7D88F65BFDD95" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.c.h";
+			"path" = "PacketTunnel/Bridge.h";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"50778595AA221B068518C8A3" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.xcconfig";
+			"path" = "Config/Base.xcconfig";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"17E45386A16E0261644BFEF3" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/SwiftUI.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"D2CCA11459A5803EC080AFC3" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/Foundation.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"65F69932BEDACFF45C810441" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/NetworkExtension.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"959B95CA0CDD3AA860D8489A" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/Network.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"1364264578512D670C54B3DA" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/Security.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"2DDC23562CD5CBC60BE0DC01" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/CoreFoundation.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"15A8EDD8993B21494CE1413D" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "wrapper.framework";
+			"path" = "System/Library/Frameworks/SystemConfiguration.framework";
+			"sourceTree" = "SDKROOT";
+		};
+		"F33B9E2B689A05FB8E5BB621" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "archive.ar";
+			"path" = "../../build/apple/libH264Engine.a";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"4E783A9E10D2A8ABA38CD11C" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.application";
+			"path" = "H264Proxy.app";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"E91B3C7AD6AE83FEA82087EF" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.app-extension";
+			"path" = "H264PacketTunnel.appex";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"FBDC4F23F93125BBEEAE800C" = {
+			"isa" = "PBXGroup";
+			"children" = ("4E783A9E10D2A8ABA38CD11C", "E91B3C7AD6AE83FEA82087EF",);
+			"name" = "Products";
+			"sourceTree" = "<group>";
+		};
+		"7561BFB015D8F536760CB671" = {
+			"isa" = "PBXGroup";
+			"children" = ("17E45386A16E0261644BFEF3", "D2CCA11459A5803EC080AFC3", "65F69932BEDACFF45C810441", "959B95CA0CDD3AA860D8489A", "1364264578512D670C54B3DA", "2DDC23562CD5CBC60BE0DC01", "15A8EDD8993B21494CE1413D", "F33B9E2B689A05FB8E5BB621",);
+			"name" = "Frameworks";
+			"sourceTree" = "<group>";
+		};
+		"870B3294C0CBD48AF6BBCC1B" = {
+			"isa" = "PBXGroup";
+			"children" = ("52709DFC15896E15CFBA8810", "61C5822ED106F7D98DE53020", "A9AD141841DDB42E5BFC7183", "8E97026629D05F1D3B7F27AC", "624A8F936E0903B5DF7F6FC4", "B813F16BDC02AC6F98158E40", "BB710B1E02BDF9E367C508A6", "F99D437CC95359B1EB37117C", "1447C8C0F3F7D88F65BFDD95", "50778595AA221B068518C8A3", "7561BFB015D8F536760CB671", "FBDC4F23F93125BBEEAE800C",);
+			"sourceTree" = "<group>";
+		};
+		"2591B3563478026FE374E0F2" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "52709DFC15896E15CFBA8810";
+		};
+		"4702A5946B5FD9DA623172AD" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "61C5822ED106F7D98DE53020";
+		};
+		"1E30959F4AA9143961454C60" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A9AD141841DDB42E5BFC7183";
+		};
+		"949D493B91791558E87BC5D7" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ("2591B3563478026FE374E0F2", "4702A5946B5FD9DA623172AD", "1E30959F4AA9143961454C60",);
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"16D35DFB579F03D3BE044272" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8E97026629D05F1D3B7F27AC";
+		};
+		"AFD18DB840419BC0094A763C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "61C5822ED106F7D98DE53020";
+		};
+		"773D601F5BB4453A3A028DDF" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A9AD141841DDB42E5BFC7183";
+		};
+		"995AB37EB3589E9D8456BDB3" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ("16D35DFB579F03D3BE044272", "AFD18DB840419BC0094A763C", "773D601F5BB4453A3A028DDF",);
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"9160BC45AC7BC8788B38509C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "17E45386A16E0261644BFEF3";
+		};
+		"45EF6634AB717A513E57D889" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "65F69932BEDACFF45C810441";
+		};
+		"A11657BEA0F26391BBEAB06D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "1364264578512D670C54B3DA";
+		};
+		"BD92572B49AC16A86614498D" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ("9160BC45AC7BC8788B38509C", "45EF6634AB717A513E57D889", "A11657BEA0F26391BBEAB06D",);
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"5AF03216E8D7965122D0B299" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "D2CCA11459A5803EC080AFC3";
+		};
+		"EFD761BFD3A5E0451846D698" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "65F69932BEDACFF45C810441";
+		};
+		"B88251E38FDA505E7911E9CE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "959B95CA0CDD3AA860D8489A";
+		};
+		"055A5798A7FB5A5E0282201E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "1364264578512D670C54B3DA";
+		};
+		"26AD4F62E6F9ED09CDFF7EE8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "2DDC23562CD5CBC60BE0DC01";
+		};
+		"A6168FBCBB77E32D75C333B1" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "15A8EDD8993B21494CE1413D";
+		};
+		"F6B27636556BE4DBD86C35F9" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F33B9E2B689A05FB8E5BB621";
+		};
+		"3A9024F383E7E7B4EAEFB070" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ("5AF03216E8D7965122D0B299", "EFD761BFD3A5E0451846D698", "B88251E38FDA505E7911E9CE", "055A5798A7FB5A5E0282201E", "26AD4F62E6F9ED09CDFF7EE8", "A6168FBCBB77E32D75C333B1", "F6B27636556BE4DBD86C35F9",);
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"7A41C93B479EC740F63D9252" = {
+			"isa" = "PBXShellScriptBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ();
+			"inputPaths" = ();
+			"outputPaths" = ();
+			"alwaysOutOfDate" = 1;
+			"runOnlyForDeploymentPostprocessing" = 0;
+			"shellPath" = "/bin/bash";
+			"shellScript" = "set -euo pipefail\n\"${SRCROOT}/../../scripts/build_ne.sh\" --engine-only\n";
+			"name" = "Build embedded Go engine";
+		};
+		"629CDD6E544982C575F0A376" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E91B3C7AD6AE83FEA82087EF";
+			"settings" = {
+				"ATTRIBUTES" = ("CodeSignOnCopy", "RemoveHeadersOnCopy",);
+			};
+		};
+		"6B8DF457004DDCB5B616420C" = {
+			"isa" = "PBXCopyFilesBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ("629CDD6E544982C575F0A376",);
+			"runOnlyForDeploymentPostprocessing" = 0;
+			"dstPath" = "";
+			"dstSubfolderSpec" = 13;
+			"name" = "Embed Packet Tunnel";
+		};
+		"ED23CF269EF9433DC734C14B" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = 1;
+			"remoteGlobalIDString" = "AE9F87E68F16211809669C65";
+			"remoteInfo" = "H264PacketTunnel";
+		};
+		"A3A912895CD545B927F7E8AB" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "AE9F87E68F16211809669C65";
+			"targetProxy" = "ED23CF269EF9433DC734C14B";
+		};
+		"AA60E62D3E7BAEF305ADABEA" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"SDKROOT" = "macosx";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+			};
+			"name" = "Debug";
+			"baseConfigurationReference" = "50778595AA221B068518C8A3";
+		};
+		"3D553B551D2688E2E7A15153" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"SDKROOT" = "macosx";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+			"name" = "Release";
+			"baseConfigurationReference" = "50778595AA221B068518C8A3";
+		};
+		"4BC187BDC04E3F4C657813CD" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("AA60E62D3E7BAEF305ADABEA", "3D553B551D2688E2E7A15153",);
+			"defaultConfigurationIsVisible" = 0;
+			"defaultConfigurationName" = "Release";
+		};
+		"20E6C50054BB2DC08A114B85" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "H264Proxy";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.roca.h264proxy.mac";
+				"SWIFT_MODULE_NAME" = "H264ProxyApp";
+				"INFOPLIST_FILE" = "App/Info.plist";
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"CODE_SIGN_ENTITLEMENTS" = "App/App.entitlements";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/../Frameworks",);
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+			};
+			"name" = "Debug";
+		};
+		"11237771934941B0D50175EC" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "H264Proxy";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.roca.h264proxy.mac";
+				"SWIFT_MODULE_NAME" = "H264ProxyApp";
+				"INFOPLIST_FILE" = "App/Info.plist";
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"CODE_SIGN_ENTITLEMENTS" = "App/App.entitlements";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/../Frameworks",);
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+			"name" = "Release";
+		};
+		"199F2B445152728BBDCDCE23" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("20E6C50054BB2DC08A114B85", "11237771934941B0D50175EC",);
+			"defaultConfigurationIsVisible" = 0;
+			"defaultConfigurationName" = "Release";
+		};
+		"03A5749DA2F4FED5EF24927E" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "H264PacketTunnel";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.roca.h264proxy.mac.PacketTunnel";
+				"SWIFT_MODULE_NAME" = "H264PacketTunnel";
+				"INFOPLIST_FILE" = "PacketTunnel/Info.plist";
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"CODE_SIGN_ENTITLEMENTS" = "PacketTunnel/PacketTunnel.entitlements";
+				"SWIFT_OBJC_BRIDGING_HEADER" = "PacketTunnel/Bridge.h";
+				"HEADER_SEARCH_PATHS" = ("$(inherited)", "$(SRCROOT)/../../build/apple/include",);
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lresolv", "-e", "_NSExtensionMain",);
+				"SKIP_INSTALL" = "YES";
+				"APPLICATION_EXTENSION_API_ONLY" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks",);
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+			};
+			"name" = "Debug";
+		};
+		"C0412A933D169A5CDEF0B378" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "H264PacketTunnel";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.roca.h264proxy.mac.PacketTunnel";
+				"SWIFT_MODULE_NAME" = "H264PacketTunnel";
+				"INFOPLIST_FILE" = "PacketTunnel/Info.plist";
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"CODE_SIGN_ENTITLEMENTS" = "PacketTunnel/PacketTunnel.entitlements";
+				"SWIFT_OBJC_BRIDGING_HEADER" = "PacketTunnel/Bridge.h";
+				"HEADER_SEARCH_PATHS" = ("$(inherited)", "$(SRCROOT)/../../build/apple/include",);
+				"OTHER_LDFLAGS" = ("$(inherited)", "-lresolv", "-e", "_NSExtensionMain",);
+				"SKIP_INSTALL" = "YES";
+				"APPLICATION_EXTENSION_API_ONLY" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks",);
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+			"name" = "Release";
+		};
+		"7C1F9445C787673E309D243A" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("03A5749DA2F4FED5EF24927E", "C0412A933D169A5CDEF0B378",);
+			"defaultConfigurationIsVisible" = 0;
+			"defaultConfigurationName" = "Release";
+		};
+		"F75109BEB4DD8800DA6B45F8" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "199F2B445152728BBDCDCE23";
+			"buildPhases" = ("949D493B91791558E87BC5D7", "BD92572B49AC16A86614498D", "6B8DF457004DDCB5B616420C",);
+			"buildRules" = ();
+			"dependencies" = ("A3A912895CD545B927F7E8AB",);
+			"name" = "H264Proxy";
+			"productName" = "H264Proxy";
+			"productReference" = "4E783A9E10D2A8ABA38CD11C";
+			"productType" = "com.apple.product-type.application";
+		};
+		"AE9F87E68F16211809669C65" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "7C1F9445C787673E309D243A";
+			"buildPhases" = ("7A41C93B479EC740F63D9252", "995AB37EB3589E9D8456BDB3", "3A9024F383E7E7B4EAEFB070",);
+			"buildRules" = ();
+			"dependencies" = ();
+			"name" = "H264PacketTunnel";
+			"productName" = "H264PacketTunnel";
+			"productReference" = "E91B3C7AD6AE83FEA82087EF";
+			"productType" = "com.apple.product-type.app-extension";
+		};
+		"98F54143AB4E86B28C3AFEE0" = {
+			"isa" = "PBXProject";
+			"attributes" = {
+				"LastUpgradeCheck" = "1500";
+				"TargetAttributes" = {
+					"F75109BEB4DD8800DA6B45F8" = {
+						"CreatedOnToolsVersion" = "15.0";
+					};
+					"AE9F87E68F16211809669C65" = {
+						"CreatedOnToolsVersion" = "15.0";
+					};
+				};
+			};
+			"buildConfigurationList" = "4BC187BDC04E3F4C657813CD";
+			"compatibilityVersion" = "Xcode 14.0";
+			"developmentRegion" = "zh_CN";
+			"hasScannedForEncodings" = 0;
+			"knownRegions" = ("zh_CN", "en", "Base",);
+			"mainGroup" = "870B3294C0CBD48AF6BBCC1B";
+			"productRefGroup" = "FBDC4F23F93125BBEEAE800C";
+			"projectDirPath" = "";
+			"projectRoot" = "";
+			"targets" = ("F75109BEB4DD8800DA6B45F8", "AE9F87E68F16211809669C65",);
+		};
+	};
+	"rootObject" = "98F54143AB4E86B28C3AFEE0";
+}

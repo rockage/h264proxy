@@ -1,0 +1,4 @@
+// Copy to Local.xcconfig after configuring an Apple development team.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+// This project packages a Packet Tunnel App Extension for development signing.
+// Use matching profiles with Network Extension and shared Keychain capabilities.

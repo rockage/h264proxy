@@ -99,12 +99,14 @@ type Session struct {
 	acceptCond *sync.Cond
 	acceptQ    []*Stream
 
-	closed     atomic.Bool
-	closedCh   chan struct{}
-	done       chan struct{} // closed when demux exits
-	writerUp   chan struct{} // closed when writer goroutine exits
-	outCh      chan *outFrame
-	feedbackCh chan *outFrame // ACK/WINDOW must not wait behind queued DATA
+	closed            atomic.Bool
+	closedCh          chan struct{}
+	done              chan struct{} // closed when demux exits
+	writerUp          chan struct{} // closed when writer goroutine exits
+	outCh             chan *outFrame
+	feedbackCh        chan *outFrame // legacy RTP feedback FIFO
+	reliableFeedback  *feedbackQueue
+	feedbackCoalesced atomic.Uint64
 
 	// metrics (atomic)
 	framesSent         atomic.Uint64
@@ -142,6 +144,9 @@ func New(cfg Config) (*Session, error) {
 		writerUp:   make(chan struct{}),
 		outCh:      make(chan *outFrame, 1024),
 		feedbackCh: make(chan *outFrame, 256),
+	}
+	if cfg.ReliableTransport {
+		s.reliableFeedback = newFeedbackQueue()
 	}
 	s.cong = newCongestion(!cfg.NoCongestion && !cfg.ReliableTransport, s.rtt, s.closedCh)
 	if cfg.Role == RoleDialer {
@@ -207,6 +212,9 @@ func (s *Session) writeLoop() {
 // a busy receiver cannot starve the opposite direction. OPEN/DATA/CLOSE/RESET
 // retain their original queue ordering; sealing/nonces stay in writeLoop.
 func (s *Session) nextFrame(burst *int) *outFrame {
+	if s.reliableFeedback != nil {
+		return s.nextReliableFrame(burst)
+	}
 	select {
 	case <-s.closedCh:
 		return nil
@@ -350,6 +358,16 @@ func (s *Session) sendFrame(typ muxproto.FrameType, streamID uint32, seq uint64,
 	if len(plaintext) > 0 {
 		f.pt = append([]byte(nil), plaintext...)
 	}
+	if s.reliableFeedback != nil && (typ == muxproto.FrameAck || typ == muxproto.FrameWindow) {
+		merged, err := s.reliableFeedback.put(f)
+		if merged {
+			s.feedbackCoalesced.Add(1)
+		}
+		if err != nil {
+			s.shutdown(err)
+		}
+		return err
+	}
 	queue := s.outCh
 	if (typ == muxproto.FrameAck || typ == muxproto.FrameWindow) && s.feedbackCh != nil {
 		queue = s.feedbackCh
@@ -374,8 +392,18 @@ func (s *Session) sendWindow(streamID uint32, grant uint64) {
 // demux reads frames from the source and dispatches them until the source ends.
 func (s *Session) demux() {
 	defer close(s.done)
+	read := s.cfg.Source.ReadPayload
+	if source, ok := s.cfg.Source.(transfer.BufferedPacketSource); ok {
+		// Decode/dispatch finishes before the next read. Decryption owns its
+		// plaintext, and stream reassembly copies it before retaining data.
+		buf := make([]byte, muxproto.HeaderSize+muxproto.MaxPayloadLength)
+		read = func() ([]byte, bool, error) {
+			n, marker, err := source.ReadPayloadInto(buf)
+			return buf[:n], marker, err
+		}
+	}
 	for {
-		payload, _, err := s.cfg.Source.ReadPayload()
+		payload, _, err := read()
 		if err != nil {
 			if err != io.EOF {
 				s.log.Debug("source_read_error", logging.KeyError, err.Error())
@@ -528,6 +556,7 @@ type Stats struct {
 	ActiveStreams              int
 	QueuedDataFrames           int
 	QueuedFeedbackFrames       int
+	FeedbackCoalesced          uint64
 	InFlightBytes              int64
 	PacingBytesPerSec          int64
 	FramesSent, FramesReceived uint64
@@ -554,6 +583,7 @@ func (s *Session) Stats() Stats {
 	srtt, _, rto := s.rtt.snapshot()
 	cwnd, ssthresh, inFlight, maxCwnd, minCwnd, lossEvents := s.cong.snapshot()
 	st := Stats{
+		FeedbackCoalesced:    s.feedbackCoalesced.Load(),
 		QueuedDataFrames:     len(s.outCh),
 		QueuedFeedbackFrames: len(s.feedbackCh),
 		InFlightBytes:        inFlight,
@@ -573,6 +603,9 @@ func (s *Session) Stats() Stats {
 		MinCwndBytes:         minCwnd,
 		SsthreshBytes:        ssthresh,
 		CongLossEvents:       lossEvents,
+	}
+	if s.reliableFeedback != nil {
+		st.QueuedFeedbackFrames = s.reliableFeedback.len()
 	}
 	s.streamsMu.Lock()
 	st.ActiveStreams = len(s.streams)

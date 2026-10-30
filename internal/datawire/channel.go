@@ -97,13 +97,23 @@ func (c *Channel) WritePayload(b []byte, _ bool) error {
 	return err
 }
 func (c *Channel) ReadPayload() ([]byte, bool, error) {
+	b := make([]byte, MaxMessage)
+	n, marker, err := c.ReadPayloadInto(b)
+	return b[:n], marker, err
+}
+
+// ReadPayloadInto preserves message boundaries without allocating a buffer for
+// every small control frame. Existing ReadPayload callers still own their data.
+func (c *Channel) ReadPayloadInto(dst []byte) (int, bool, error) {
+	if len(dst) < MaxMessage {
+		return 0, false, io.ErrShortBuffer
+	}
 	w, err := c.get()
 	if err != nil {
-		return nil, false, err
+		return 0, false, err
 	}
-	b := make([]byte, MaxMessage)
-	n, err := w.Read(b)
-	return b[:n], false, err
+	n, err := w.Read(dst[:MaxMessage])
+	return n, false, err
 }
 func (c *Channel) BufferedAmount() uint64 {
 	c.mu.Lock()
