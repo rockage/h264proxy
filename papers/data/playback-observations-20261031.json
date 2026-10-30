@@ -1,0 +1,40 @@
+{
+  "study_date": "2026-10-31",
+  "source_kind": "transcription of user-provided YouTube statistics screenshots",
+  "method": "uncontrolled playback observations; connection speed is player estimated, not sustained WAN measurement",
+  "observations": [
+    {
+      "stage": "client_receive_window_1MiB",
+      "width": 2560,
+      "height": 1440,
+      "fps": 60,
+      "codec": "VP9",
+      "connection_speed_Kbps": 12393,
+      "buffer_seconds": 4.77,
+      "dropped_frames": 95,
+      "total_frames": 1339
+    },
+    {
+      "stage": "client_receive_window_1MiB_and_gateway_send_high_1MiB_low_512KiB",
+      "width": 3840,
+      "height": 2160,
+      "fps": 60,
+      "codec": "VP9",
+      "connection_speed_Kbps": 70519,
+      "buffer_seconds": 4.86,
+      "dropped_frames": 84,
+      "total_frames": 2163
+    }
+  ],
+  "limitations": [
+    "No controlled before/after pair",
+    "No continuous 30-60 minute playback trace",
+    "Dropped frames do not isolate network, decode or rendering causes"
+  ],
+  "omitted_fields": [
+    "video identifiers",
+    "playback timestamps",
+    "connection identifiers",
+    "raw screenshots"
+  ]
+}

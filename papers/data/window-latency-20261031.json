@@ -1,0 +1,30 @@
+{
+  "study_date": "2026-10-31",
+  "source_kind": "export of recorded Go benchmark output",
+  "benchmark": "BenchmarkReliableWindowLatency",
+  "host_cpu": "Apple M4",
+  "goos": "darwin",
+  "goarch": "arm64",
+  "simulated_RTT_ms": 80,
+  "one_way_delay_ms": 40,
+  "payload_bytes_per_operation": 2097152,
+  "link_rate_limit": null,
+  "uses_real_WebRTC": false,
+  "results": [
+    {
+      "receive_window_KiB": 256,
+      "iterations": 3,
+      "ns_per_op": 794123125,
+      "decimal_MB_per_second": 2.64,
+      "credit_wait_ms_per_op": 710.4
+    },
+    {
+      "receive_window_KiB": 1024,
+      "iterations": 3,
+      "ns_per_op": 275544958,
+      "decimal_MB_per_second": 7.61,
+      "credit_wait_ms_per_op": 190.6
+    }
+  ],
+  "uncertainty": "Three iterations, no independent repeated-run confidence interval; memory link isolates mux credit."
+}

@@ -1,5 +1,7 @@
 # H264TunnelLab
 
+中文工程论文：[基于 WebRTC/ICE-TCP 的 macOS 全局代理：多层流控重构与 4K60 播放的工程研究](papers/webrtc-ice-tcp-flow-control.zh-CN.md)，附实验数据摘要、复现方法与局限说明。
+
 ## Install the gateway on a Linux VPS
 
 Run as root on a Linux **systemd** server (amd64 or arm64):

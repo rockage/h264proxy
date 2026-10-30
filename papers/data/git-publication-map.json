@@ -1,0 +1,28 @@
+{
+  "publication_date": "2026-10-31",
+  "method": "Connected GitHub Git Data API; original local history retained",
+  "base_commit": "7a1c71ddcc0a5ca1ef628facd59dbfc42e61474c",
+  "verification": "Every published checkpoint tree SHA equals its original local tree SHA; commit IDs differ because publication metadata differs.",
+  "checkpoints": [
+    {
+      "local_commit": "6d49fef1718fc4ca8c15fceacfa623b1cfb3e157",
+      "github_commit": "0fc09cc5b4a73581012fdc328dd4beeb2f44a3c7",
+      "tree_sha": "94a0bae9c93cbcd38dba20d1bd1129435e5b2b7e"
+    },
+    {
+      "local_commit": "f5929c6e12aab6e9a52c1de58306ac08821e9bab",
+      "github_commit": "b80ed9641a05ec78392a2dd104047a22d0bc79c9",
+      "tree_sha": "e58acf5507b35924ce64f45fea771a30eb5cb707"
+    },
+    {
+      "local_commit": "581f737698e74b86925799c989e89f058eb2b2a3",
+      "github_commit": "afd77fbf9c9a98e5d35a14667c9c2175389a249a",
+      "tree_sha": "030a6eb15714eecd16274f775c0a88568601e674"
+    },
+    {
+      "local_commit": "cb029855eb899878fab1635af0276046b3d8f3ee",
+      "github_commit": "cb2149c3ab6a033cadb6cda65214864c10e5557e",
+      "tree_sha": "ad40d58d02d9c1934f55f264b979425314ee7159"
+    }
+  ]
+}

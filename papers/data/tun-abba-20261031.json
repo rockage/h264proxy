@@ -1,0 +1,783 @@
+{
+  "study_date": "2026-10-31",
+  "source_kind": "deidentified export of local experiment report",
+  "design": "ABBA resumed across pauses; same VPS and ICE-TCP; public Cloudflare endpoint; uncontrolled background traffic",
+  "transport": "ICE-TCP",
+  "response_bytes": 4194304,
+  "phases": [
+    {
+      "backend": "tun2socks",
+      "phase": 1,
+      "startup_seconds": 3.065987000001769,
+      "dns": [
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.19142812499922002,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.011704624997946667,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.006256540997128468,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.26629787500132807,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.01554954200037173,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.009760749999259133,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.18003187499925843,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.013232375000370666,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.00906287500038161,
+          "ok": true,
+          "answers": 2
+        }
+      ],
+      "ipv4_policy": [
+        {
+          "name": "example.com",
+          "type": "AAAA",
+          "server": "127.0.0.1",
+          "seconds": 0.0068042909988434985,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "HTTPS",
+          "server": "127.0.0.1",
+          "seconds": 0.005731750003178604,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "SVCB",
+          "server": "127.0.0.1",
+          "seconds": 0.0051364159990043845,
+          "ok": true,
+          "answers": 0
+        }
+      ],
+      "serial": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 29.770857,
+          "dns_seconds": 0.191315,
+          "ttfb_seconds": 0.934646,
+          "tls_seconds": 0.586911,
+          "Mbps": 1.1270898919705266,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 52.707967,
+          "dns_seconds": 0.656552,
+          "ttfb_seconds": 3.417863,
+          "tls_seconds": 2.900587,
+          "Mbps": 0.6366102490729723,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 48.425486,
+          "dns_seconds": 0.002184,
+          "ttfb_seconds": 3.907013,
+          "tls_seconds": 1.82204,
+          "Mbps": 0.692908523416781,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 47.669712,
+          "dns_seconds": 0.002163,
+          "ttfb_seconds": 2.80173,
+          "tls_seconds": 1.711802,
+          "Mbps": 0.7038941623981282,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel_seconds": 48.45698491700023,
+      "parallel_Mbps": 1.3849162120785627,
+      "ok": true,
+      "expected_egress_verified": true
+    },
+    {
+      "backend": "sing-box",
+      "phase": 2,
+      "startup_seconds": 2.6486157500003173,
+      "dns": [
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.27454908300205716,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.015776000000187196,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.009390667000843678,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.08341945799838868,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.011112083000625717,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.007823957999789855,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.12193754100007936,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.014101000000664499,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.010067874998640036,
+          "ok": true,
+          "answers": 2
+        }
+      ],
+      "ipv4_policy": [
+        {
+          "name": "example.com",
+          "type": "AAAA",
+          "server": "127.0.0.1",
+          "seconds": 0.007903708999947412,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "HTTPS",
+          "server": "127.0.0.1",
+          "seconds": 0.007251708000694634,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "SVCB",
+          "server": "127.0.0.1",
+          "seconds": 0.006367750000208616,
+          "ok": true,
+          "answers": 0
+        }
+      ],
+      "dns_failure_count": 0,
+      "hardcoded_dns": {
+        "name": "example.com",
+        "type": "A",
+        "server": "8.8.8.8",
+        "seconds": 0.004901791999145644,
+        "ok": true,
+        "answers": 2
+      },
+      "serial": [
+        {
+          "ok": false,
+          "error": "curl: (18) transfer closed with 4148569 bytes remaining to read"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 7.178631,
+          "dns_seconds": 0.002444,
+          "ttfb_seconds": 0.72255,
+          "tls_seconds": 0.48781,
+          "Mbps": 4.674210444860587,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 22.847604,
+          "dns_seconds": 0.003563,
+          "ttfb_seconds": 0.953328,
+          "tls_seconds": 0.320147,
+          "Mbps": 1.4686192915458445,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 24.016796,
+          "dns_seconds": 0.003554,
+          "ttfb_seconds": 1.36499,
+          "tls_seconds": 0.437671,
+          "Mbps": 1.3971235796814863,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel_seconds": 24.05514520900033,
+      "parallel_Mbps": 2.7897925128670997,
+      "ok": false,
+      "error": "下载失败或长度不符。",
+      "expected_egress_verified": true
+    },
+    {
+      "backend": "sing-box",
+      "phase": 3,
+      "startup_seconds": 3.069000750001578,
+      "dns": [
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.12471670900049503,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.01578512500054785,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.009978917001717491,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.23675141599960625,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.011100832998636179,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.010530041003221413,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.23355583400189062,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.008370417002879549,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.007289583998499438,
+          "ok": true,
+          "answers": 2
+        }
+      ],
+      "ipv4_policy": [
+        {
+          "name": "example.com",
+          "type": "AAAA",
+          "server": "127.0.0.1",
+          "seconds": 0.006331000000500353,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "HTTPS",
+          "server": "127.0.0.1",
+          "seconds": 0.0060320420016068965,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "SVCB",
+          "server": "127.0.0.1",
+          "seconds": 0.0048268749997077975,
+          "ok": true,
+          "answers": 0
+        }
+      ],
+      "dns_failure_count": 0,
+      "hardcoded_dns": {
+        "name": "example.com",
+        "type": "A",
+        "server": "8.8.8.8",
+        "seconds": 0.004462584001885261,
+        "ok": true,
+        "answers": 2
+      },
+      "serial": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 11.368804,
+          "dns_seconds": 1.142785,
+          "ttfb_seconds": 1.902473,
+          "tls_seconds": 1.502255,
+          "Mbps": 2.9514478391922316,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 13.056383,
+          "dns_seconds": 0.002871,
+          "ttfb_seconds": 1.155509,
+          "tls_seconds": 0.478593,
+          "Mbps": 2.5699638253565324,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 28.693424,
+          "dns_seconds": 0.002867,
+          "ttfb_seconds": 0.906778,
+          "tls_seconds": 0.38625,
+          "Mbps": 1.1694119182151284,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 27.990556,
+          "dns_seconds": 0.002866,
+          "ttfb_seconds": 0.685548,
+          "tls_seconds": 0.38626,
+          "Mbps": 1.1987769017521481,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel_seconds": 28.725970500003314,
+      "parallel_Mbps": 2.336173951024292,
+      "ok": true,
+      "expected_egress_verified": true
+    },
+    {
+      "backend": "tun2socks",
+      "phase": 4,
+      "startup_seconds": 2.679705875001673,
+      "dns": [
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.27066774999912013,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.013805374997900799,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.010748166001576465,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.24941949999993085,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.014203709000867093,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.010034291997726541,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.6872442910025711,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.014726708999660332,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.00801179200061597,
+          "ok": true,
+          "answers": 2
+        }
+      ],
+      "ipv4_policy": [
+        {
+          "name": "example.com",
+          "type": "AAAA",
+          "server": "127.0.0.1",
+          "seconds": 0.0074942499995813705,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "HTTPS",
+          "server": "127.0.0.1",
+          "seconds": 0.005775124998763204,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "SVCB",
+          "server": "127.0.0.1",
+          "seconds": 0.005269666002277518,
+          "ok": true,
+          "answers": 0
+        }
+      ],
+      "dns_failure_count": 0,
+      "serial": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 7.369303,
+          "dns_seconds": 0.349787,
+          "ttfb_seconds": 1.360169,
+          "tls_seconds": 0.99635,
+          "Mbps": 4.553270777439875,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 9.397435,
+          "dns_seconds": 0.002651,
+          "ttfb_seconds": 0.673176,
+          "tls_seconds": 0.412415,
+          "Mbps": 3.5705947420758966,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel": [
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 12.710954,
+          "dns_seconds": 0.002486,
+          "ttfb_seconds": 0.506039,
+          "tls_seconds": 0.208258,
+          "Mbps": 2.6398043766030463,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        },
+        {
+          "ok": true,
+          "bytes": 4194304,
+          "seconds": 13.283696,
+          "dns_seconds": 0.002486,
+          "ttfb_seconds": 0.506039,
+          "tls_seconds": 0.208285,
+          "Mbps": 2.5259861412064835,
+          "sha256": "7563843dc61195c0c2991aa93be05ca667d1c819ce6745746668795895be8f1c"
+        }
+      ],
+      "parallel_seconds": 13.316732957999193,
+      "parallel_Mbps": 5.039439043469634,
+      "ok": true,
+      "expected_egress_verified": true
+    }
+  ],
+  "prior_attempts": [
+    {
+      "backend": "sing-box",
+      "phase": 2,
+      "startup_seconds": 3.4726970000010624,
+      "dns": [
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.07231029200193007,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.02341329100090661,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "www.youtube.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.012700708000920713,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 10.008652042000904,
+          "ok": false,
+          "answers": null
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.47138249999989057,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "i.ytimg.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.01678429100138601,
+          "ok": true,
+          "answers": 8
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.09256845900017652,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.015475332998903468,
+          "ok": true,
+          "answers": 2
+        },
+        {
+          "name": "example.com",
+          "type": "A",
+          "server": "127.0.0.1",
+          "seconds": 0.011039332999644103,
+          "ok": true,
+          "answers": 2
+        }
+      ],
+      "ipv4_policy": [
+        {
+          "name": "example.com",
+          "type": "AAAA",
+          "server": "127.0.0.1",
+          "seconds": 0.008402833002037369,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "HTTPS",
+          "server": "127.0.0.1",
+          "seconds": 0.00812637499984703,
+          "ok": true,
+          "answers": 0
+        },
+        {
+          "name": "example.com",
+          "type": "SVCB",
+          "server": "127.0.0.1",
+          "seconds": 0.006567832999280654,
+          "ok": true,
+          "answers": 0
+        }
+      ],
+      "ok": false,
+      "error": "DNS A 查询失败。",
+      "expected_egress_verified": true
+    }
+  ],
+  "summary": {
+    "tun2socks": {
+      "serial_success_median_Mbps": 2.3488423170232116,
+      "parallel_success_mean_Mbps": 3.212177627774098,
+      "download_failure_count": 0,
+      "download_attempt_count": 8,
+      "dns_median_ms": 14.004541999383946,
+      "dns_first_median_ms": 257.85868750062946,
+      "dns_repeat_median_ms": 11.226395499761566,
+      "dns_failure_count": 0,
+      "dns_query_count": 18,
+      "startup_mean_seconds": 2.872846437501721
+    },
+    "sing-box": {
+      "serial_success_median_Mbps": 2.9514478391922316,
+      "parallel_success_mean_Mbps": 2.5629832319456956,
+      "download_failure_count": 1,
+      "download_attempt_count": 8,
+      "dns_median_ms": 12.606541500645108,
+      "dns_first_median_ms": 179.13627150119282,
+      "dns_repeat_median_ms": 10.298958000930725,
+      "dns_failure_count": 0,
+      "dns_query_count": 18,
+      "startup_mean_seconds": 2.8588082500009477
+    }
+  },
+  "dns_restored": true,
+  "transport_route_restored": true,
+  "complete": true,
+  "all_checks_passed": false,
+  "omitted_fields": [
+    "gateway address",
+    "local paths",
+    "route tables",
+    "interface addresses",
+    "session identifiers",
+    "raw application logs"
+  ]
+}
