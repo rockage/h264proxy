@@ -97,11 +97,12 @@ type Session struct {
 	acceptCond *sync.Cond
 	acceptQ    []*Stream
 
-	closed   atomic.Bool
-	closedCh chan struct{}
-	done     chan struct{} // closed when demux exits
-	writerUp chan struct{} // closed when writer goroutine exits
-	outCh    chan *outFrame
+	closed     atomic.Bool
+	closedCh   chan struct{}
+	done       chan struct{} // closed when demux exits
+	writerUp   chan struct{} // closed when writer goroutine exits
+	outCh      chan *outFrame
+	feedbackCh chan *outFrame // ACK/WINDOW must not wait behind queued DATA
 
 	// metrics (atomic)
 	framesSent atomic.Uint64
@@ -109,6 +110,7 @@ type Session struct {
 	bytesSent  atomic.Uint64
 	bytesRecv  atomic.Uint64
 	decodeFail atomic.Uint64
+	pacingRate atomic.Int64
 }
 
 // New builds a Session and starts its demux goroutine.
@@ -135,6 +137,7 @@ func New(cfg Config) (*Session, error) {
 		done:       make(chan struct{}),
 		writerUp:   make(chan struct{}),
 		outCh:      make(chan *outFrame, 1024),
+		feedbackCh: make(chan *outFrame, 256),
 	}
 	s.cong = newCongestion(!cfg.NoCongestion, s.rtt, s.closedCh)
 	if cfg.Role == RoleDialer {
@@ -159,31 +162,75 @@ func (s *Session) writeLoop() {
 	defer close(s.writerUp)
 	rate := s.cfg.RateBytesPerSec
 	p := newPacer(rate)
+	feedbackBurst := 0
 	for {
-		select {
-		case <-s.closedCh:
+		f := s.nextFrame(&feedbackBurst)
+		if f == nil {
 			return
-		case f := <-s.outCh:
-			counter, err := s.sealer.Next()
-			if err != nil {
-				s.log.Error("nonce_exhausted", logging.KeyError, err.Error())
-				s.shutdown(err)
-				return
-			}
-			frame, err := muxproto.Encode(s.sealer.Cipher(), f.typ, s.cfg.SessionID, f.streamID, f.seq, s.sealer.Prefix(), counter, f.pt)
-			if err != nil {
-				s.log.Error("encode_failed", logging.KeyError, err.Error())
+		}
+		if f.typ == muxproto.FrameData || f.typ == muxproto.FrameClose || f.typ == muxproto.FrameReset {
+			s.streamsMu.Lock()
+			st := s.streams[f.streamID]
+			s.streamsMu.Unlock()
+			if st == nil || !st.markSent(f.typ, f.seq, time.Now()) {
 				continue
 			}
-			if err := s.cfg.Sink.WritePayload(frame, false); err != nil {
-				s.log.Debug("sink_write_error", logging.KeyError, err.Error())
-				s.shutdown(err)
-				return
-			}
-			s.framesSent.Add(1)
-			s.bytesSent.Add(uint64(len(frame)))
-			p.wait(len(frame))
 		}
+		s.pacingRate.Store(int64(p.rate))
+		counter, err := s.sealer.Next()
+		if err != nil {
+			s.log.Error("nonce_exhausted", logging.KeyError, err.Error())
+			s.shutdown(err)
+			return
+		}
+		frame, err := muxproto.Encode(s.sealer.Cipher(), f.typ, s.cfg.SessionID, f.streamID, f.seq, s.sealer.Prefix(), counter, f.pt)
+		if err != nil {
+			s.log.Error("encode_failed", logging.KeyError, err.Error())
+			continue
+		}
+		if err := s.cfg.Sink.WritePayload(frame, false); err != nil {
+			s.log.Debug("sink_write_error", logging.KeyError, err.Error())
+			s.shutdown(err)
+			return
+		}
+		s.framesSent.Add(1)
+		s.bytesSent.Add(uint64(len(frame)))
+		p.wait(len(frame))
+	}
+}
+
+// Prioritize feedback, but admit queued DATA after eight feedback frames so
+// a busy receiver cannot starve the opposite direction. OPEN/DATA/CLOSE/RESET
+// retain their original queue ordering; sealing/nonces stay in writeLoop.
+func (s *Session) nextFrame(burst *int) *outFrame {
+	select {
+	case <-s.closedCh:
+		return nil
+	default:
+	}
+	if *burst >= 8 {
+		select {
+		case f := <-s.outCh:
+			*burst = 0
+			return f
+		default:
+		}
+	}
+	select {
+	case f := <-s.feedbackCh:
+		*burst++
+		return f
+	default:
+	}
+	select {
+	case <-s.closedCh:
+		return nil
+	case f := <-s.feedbackCh:
+		*burst++
+		return f
+	case f := <-s.outCh:
+		*burst = 0
+		return f
 	}
 }
 
@@ -299,8 +346,12 @@ func (s *Session) sendFrame(typ muxproto.FrameType, streamID uint32, seq uint64,
 	if len(plaintext) > 0 {
 		f.pt = append([]byte(nil), plaintext...)
 	}
+	queue := s.outCh
+	if (typ == muxproto.FrameAck || typ == muxproto.FrameWindow) && s.feedbackCh != nil {
+		queue = s.feedbackCh
+	}
 	select {
-	case s.outCh <- f:
+	case queue <- f:
 		return nil
 	case <-s.closedCh:
 		return ErrSessionClosed
@@ -415,10 +466,9 @@ func (s *Session) maintain() {
 			for _, st := range streams {
 				st.retransmitDue(now) // sender: RTO retransmit
 				ackNow, active, grant, ack := st.receiverState()
-				// ACK every tick while receiving so acknowledgements stay well
-				// ahead of the RTO; re-advertise the (idempotent) window less
-				// often.
-				if ackNow || active {
+				// Fresh data/holes need prompt feedback. Idle streams only need
+				// the slower heartbeat to recover a lost ACK or WINDOW.
+				if ackNow || (active && heartbeat) {
 					s.sendAck(st.id, ack)
 				}
 				if active && heartbeat {
@@ -465,6 +515,10 @@ func (s *Session) Closed() <-chan struct{} { return s.closedCh }
 // Stats is a snapshot of session counters.
 type Stats struct {
 	ActiveStreams              int
+	QueuedDataFrames           int
+	QueuedFeedbackFrames       int
+	InFlightBytes              int64
+	PacingBytesPerSec          int64
 	FramesSent, FramesReceived uint64
 	BytesSent, BytesReceived   uint64
 	DecodeFailures             uint64
@@ -484,20 +538,24 @@ type Stats struct {
 // Stats returns a snapshot including aggregated per-stream counters.
 func (s *Session) Stats() Stats {
 	srtt, _, rto := s.rtt.snapshot()
-	cwnd, ssthresh, _, maxCwnd, minCwnd, lossEvents := s.cong.snapshot()
+	cwnd, ssthresh, inFlight, maxCwnd, minCwnd, lossEvents := s.cong.snapshot()
 	st := Stats{
-		FramesSent:     s.framesSent.Load(),
-		FramesReceived: s.framesRecv.Load(),
-		BytesSent:      s.bytesSent.Load(),
-		BytesReceived:  s.bytesRecv.Load(),
-		DecodeFailures: s.decodeFail.Load(),
-		SRTTMillis:     float64(srtt) / float64(time.Millisecond),
-		RTOMillis:      float64(rto) / float64(time.Millisecond),
-		CwndBytes:      cwnd,
-		MaxCwndBytes:   maxCwnd,
-		MinCwndBytes:   minCwnd,
-		SsthreshBytes:  ssthresh,
-		CongLossEvents: lossEvents,
+		QueuedDataFrames:     len(s.outCh),
+		QueuedFeedbackFrames: len(s.feedbackCh),
+		InFlightBytes:        inFlight,
+		PacingBytesPerSec:    s.pacingRate.Load(),
+		FramesSent:           s.framesSent.Load(),
+		FramesReceived:       s.framesRecv.Load(),
+		BytesSent:            s.bytesSent.Load(),
+		BytesReceived:        s.bytesRecv.Load(),
+		DecodeFailures:       s.decodeFail.Load(),
+		SRTTMillis:           float64(srtt) / float64(time.Millisecond),
+		RTOMillis:            float64(rto) / float64(time.Millisecond),
+		CwndBytes:            cwnd,
+		MaxCwndBytes:         maxCwnd,
+		MinCwndBytes:         minCwnd,
+		SsthreshBytes:        ssthresh,
+		CongLossEvents:       lossEvents,
 	}
 	s.streamsMu.Lock()
 	st.ActiveStreams = len(s.streams)

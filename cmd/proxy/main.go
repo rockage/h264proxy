@@ -39,12 +39,13 @@ func main() {
 	max := flag.Int("max-connections", 128, "maximum concurrent proxied connections")
 	logPath := flag.String("log", "", "optional structured log file")
 	report := flag.String("report", "", "write final mux statistics on exit")
+	statsInterval := flag.Duration("stats-interval", 5*time.Second, "log live transport counters at this interval (0=disabled)")
 	flag.Parse()
 	if *role != "gateway" && *role != "client" {
 		fmt.Fprintln(os.Stderr, "-role must be gateway or client")
 		os.Exit(2)
 	}
-	if *rate < 0 || *max <= 0 || *setup <= 0 || *handshake <= 0 || *dial <= 0 || *idle < 0 {
+	if *rate < 0 || *max <= 0 || *setup <= 0 || *handshake <= 0 || *dial <= 0 || *idle < 0 || *statsInterval < 0 {
 		fmt.Fprintln(os.Stderr, "invalid rate, connection limit or timeout")
 		os.Exit(2)
 	}
@@ -57,7 +58,7 @@ func main() {
 	err = run(ctx, *role, *socksAddr, *keyPath, *report, *setup, tunnel.Config{
 		HTTP: *httpAddr, Rate: *rate, Log: log,
 		RTC: rtc.Options{Network: *netMode, PublicIP: *publicIP, UDPPort: *udpPort, STUNServers: splitCSV(*stun)},
-	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log})
+	}, socks.Config{RequireDomain: *remoteDNS, HandshakeTimeout: *handshake, DialTimeout: *dial, IdleTimeout: *idle, MaxConnections: *max, Log: log}, *statsInterval)
 	stop()
 	if err != nil {
 		log.Error("fatal", "error", err.Error())
@@ -68,7 +69,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, role, socksAddr, keyPath, report string, setup time.Duration, cfg tunnel.Config, sc socks.Config) error {
+func run(ctx context.Context, role, socksAddr, keyPath, report string, setup time.Duration, cfg tunnel.Config, sc socks.Config, statsInterval time.Duration) error {
 	parent := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -89,6 +90,9 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 		return err
 	}
 	defer peer.Close()
+	if statsInterval > 0 {
+		go logTransportStats(ctx, peer.Session, cfg.Log, statsInterval)
+	}
 	if report != "" {
 		defer func() {
 			b, e := json.MarshalIndent(peer.Session.Stats(), "", "  ")
@@ -126,6 +130,21 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 		return fmt.Errorf("tunnel closed: %w", err)
 	}
 	return err
+}
+
+func logTransportStats(ctx context.Context, sess *mux.Session, log *logging.Logger, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sess.Closed():
+			return
+		case <-ticker.C:
+			log.Info("mux_stats", "stats", sess.Stats())
+		}
+	}
 }
 
 func splitCSV(s string) []string {

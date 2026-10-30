@@ -42,13 +42,15 @@ var ErrStreamReset = errors.New("mux: stream reset")
 
 // retxEntry is one unacknowledged outbound frame kept for possible resend.
 type retxEntry struct {
-	typ       muxproto.FrameType
-	seq       uint64
-	pt        []byte
-	dataLen   int // DATA payload bytes counted against the congestion window
-	firstSent time.Time
-	lastSent  time.Time
-	tries     int
+	typ         muxproto.FrameType
+	seq         uint64
+	pt          []byte
+	dataLen     int // DATA payload bytes counted against the congestion window
+	firstSent   time.Time
+	lastSent    time.Time
+	tries       int
+	fastAckHigh uint64 // highest ACK evidence used for fast retransmit
+	queued      bool   // initial send or retransmit is waiting in the writer queue
 }
 
 // Stream is a bidirectional, flow-controlled, reliable logical stream
@@ -250,8 +252,7 @@ func (s *Stream) Reset() error {
 // --- reliability: sender side ---
 
 func (s *Stream) trackRetx(typ muxproto.FrameType, seq uint64, pt []byte) {
-	now := time.Now()
-	e := &retxEntry{typ: typ, seq: seq, firstSent: now, lastSent: now, tries: 1}
+	e := &retxEntry{typ: typ, seq: seq, tries: 1, queued: true}
 	if len(pt) > 0 {
 		e.pt = append([]byte(nil), pt...)
 	}
@@ -261,6 +262,23 @@ func (s *Stream) trackRetx(typ muxproto.FrameType, seq uint64, pt []byte) {
 	s.txmu.Lock()
 	s.retx[seq] = e
 	s.txmu.Unlock()
+}
+
+// Called by the single writer immediately before writing a tracked frame.
+// Queue residence is not network RTT and must not run retransmission timers.
+func (s *Stream) markSent(typ muxproto.FrameType, seq uint64, now time.Time) bool {
+	s.txmu.Lock()
+	defer s.txmu.Unlock()
+	e := s.retx[seq]
+	if e == nil || e.typ != typ {
+		return false
+	} // already ACKed or reset
+	if e.firstSent.IsZero() {
+		e.firstSent = now
+	}
+	e.lastSent = now
+	e.queued = false
+	return true
 }
 
 // sendAbort is the abort predicate for a blocked congestion grant.
@@ -283,6 +301,7 @@ func (s *Stream) txError() error {
 // onAck removes acknowledged frames and fast-retransmits still-missing ones.
 func (s *Stream) onAck(a *muxproto.Ack) {
 	now := time.Now()
+	srtt, _, _ := s.sess.rtt.snapshot()
 	var resend []*retxEntry
 	var newestSample time.Time
 	failed := false
@@ -300,7 +319,7 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 	for seq, e := range s.retx {
 		if seq < a.CumAck || inRanges(seq, a.Ranges) {
 			// Karn's algorithm: only unretransmitted frames yield a clean RTT.
-			if e.tries == 1 {
+			if e.tries == 1 && !e.firstSent.IsZero() {
 				if e.firstSent.After(newestSample) {
 					newestSample = e.firstSent
 				}
@@ -312,13 +331,18 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 		// Require three later sequence numbers as loss evidence. One later
 		// packet can simply be reordered; it must not halve the whole session's
 		// congestion window. Tail losses remain covered by the RTO timer.
-		if maxReported > seq && maxReported-seq > 3 && now.Sub(e.lastSent) >= minRetxInterval {
+		wait := minRetxInterval
+		if e.tries > 1 && srtt > wait {
+			wait = srtt
+		}
+		if !e.queued && !e.lastSent.IsZero() && maxReported > seq && maxReported-seq > 3 && maxReported > e.fastAckHigh && now.Sub(e.lastSent) >= wait {
 			if e.tries >= maxRetries {
 				s.txErr = ErrPeerUnreachable
 				failed = true
 				continue
 			}
-			e.lastSent = now
+			e.queued = true
+			e.fastAckHigh = maxReported
 			e.tries++
 			s.retransmits++
 			resend = append(resend, cloneEntry(e))
@@ -355,6 +379,9 @@ func (s *Stream) retransmitDue(now time.Time) {
 	failed := false
 	s.txmu.Lock()
 	for _, e := range s.retx {
+		if e.queued || e.lastSent.IsZero() {
+			continue
+		}
 		if now.Sub(e.lastSent) < backoffRTO(base, e.tries) {
 			continue
 		}
@@ -363,7 +390,7 @@ func (s *Stream) retransmitDue(now time.Time) {
 			failed = true
 			continue
 		}
-		e.lastSent = now
+		e.queued = true
 		e.tries++
 		s.retransmits++
 		resend = append(resend, cloneEntry(e))
@@ -518,7 +545,9 @@ func (s *Stream) receiverState() (ackNow, active bool, grant uint64, ack *muxpro
 	fullyDone := s.recvClosed && s.nextRecvSeq >= s.closeSeq
 	started := s.nextRecvSeq > 0 || len(s.reorder) > 0 || s.recvClosed
 	active = started && !fullyDone
-	return holes, active, uint64(s.grantedTotal), s.buildAckLocked()
+	ackNow = holes || s.deliveredAck > 0
+	s.deliveredAck = 0
+	return ackNow, active, uint64(s.grantedTotal), s.buildAckLocked()
 }
 
 func (s *Stream) onWindow(grant uint64) {
