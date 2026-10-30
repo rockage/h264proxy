@@ -24,6 +24,11 @@ See **[INSTALL.md](INSTALL.md)** for supported systems, updates, rollback,
 firewall behavior, key retrieval and client connection instructions. This is a
 single-client TCP gateway; installing it does not add automatic client reconnect.
 
+RTP recovery now accounts for reordered feedback and queue-delay changes, with
+live transport/RTP statistics. See [RTP_REORDER_FIX.md](RTP_REORDER_FIX.md) for
+the loss-free WAN regression and sustained download results. The production
+proxy continues to carry data on the H.264-negotiated SRTP media channel.
+
 The client defaults to **remote DNS only**: SOCKS5/SOCKS4a hostnames are resolved
 by the gateway; IP-only requests (including plain SOCKS4) are rejected to avoid
 silently forwarding locally polluted DNS results. Explicit IP use requires

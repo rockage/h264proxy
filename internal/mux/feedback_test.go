@@ -118,3 +118,30 @@ func TestQueuedFramesDoNotStartNetworkTimers(t *testing.T) {
 		t.Fatal("already ACKed queue entry was sent again")
 	}
 }
+
+func TestRecoveryBudgetTracksOutstandingFlight(t *testing.T) {
+	st := ackTestStream()
+	now := time.Now()
+	st.deliveryRTTHighWater = 500 * time.Millisecond
+	st.deliveryPeakObservedAt = now.Add(-100 * time.Millisecond)
+	st.retx[0] = &retxEntry{typ: muxproto.FrameData, firstSent: now.Add(-200 * time.Millisecond), lastSent: now.Add(-200 * time.Millisecond), tries: 1}
+	st.retx[1] = &retxEntry{typ: muxproto.FrameData, firstSent: now.Add(-50 * time.Millisecond), lastSent: now.Add(-50 * time.Millisecond), tries: 1}
+	st.onAck(&muxproto.Ack{Ranges: []muxproto.SeqRange{{Start: 1, End: 2}}})
+	if st.deliveryRTTHighWater != 500*time.Millisecond {
+		t.Fatal("forgot queue peak while old packet still in flight")
+	}
+	st.retransmitDue(time.Now())
+	if st.retransmits != 0 {
+		t.Fatal("newer fast ACK caused old flight to time out")
+	}
+	st.onAck(&muxproto.Ack{CumAck: 1})
+	if st.deliveryRTTHighWater >= 500*time.Millisecond {
+		t.Fatal("queue peak did not expire when old flight drained")
+	}
+	st.trackRetx(muxproto.FrameData, 2, []byte("real loss"))
+	st.markSent(muxproto.FrameData, 2, time.Now().Add(-time.Second))
+	st.retransmitDue(time.Now())
+	if st.retransmits != 1 {
+		t.Fatal("recovery budget prevented recovery of a real loss")
+	}
+}

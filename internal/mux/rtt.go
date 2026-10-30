@@ -11,9 +11,12 @@ const (
 	initialRTO = 250 * time.Millisecond
 	// minRTO is kept above the receiver's ACK cadence (one ACK per maintenance
 	// tick, 50 ms) with margin, so a timely ACK is never mistaken for loss.
-	minRTO    = 100 * time.Millisecond
-	maxRTO    = 2 * time.Second
-	clockGran = 1 * time.Millisecond // G
+	minRTO = 100 * time.Millisecond
+	maxRTO = 2 * time.Second
+	// ACK and retransmission maintenance runs on this tick. RTO and fast
+	// loss detection must leave room for that feedback scheduling delay.
+	maintenanceTick = 50 * time.Millisecond
+	clockGran       = maintenanceTick
 	// maxBackoffShift caps per-frame exponential backoff at 2^4 = 16x base RTO.
 	maxBackoffShift = 4
 )
@@ -85,6 +88,15 @@ func clampRTO(d time.Duration) time.Duration {
 		return maxRTO
 	}
 	return d
+}
+
+// Allow a compressed/reordered ACK path one extra RTT and the delayed-ACK
+// tick before loss recovery collapses the session window.
+func recoveryRTO(srtt, estimate time.Duration) time.Duration {
+	if guard := 2*srtt + maintenanceTick; guard > estimate {
+		estimate = guard
+	}
+	return clampRTO(estimate)
 }
 
 // backoffRTO applies per-frame exponential backoff: a frame retried `tries`

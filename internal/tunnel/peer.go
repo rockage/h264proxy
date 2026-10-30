@@ -38,6 +38,8 @@ type Peer struct {
 	once    sync.Once
 }
 
+func (p *Peer) ReceiveStats() media.ReceiveStats { return p.reader.Stats() }
+
 func (p *Peer) Close() error {
 	p.once.Do(func() {
 		if p.Session != nil {

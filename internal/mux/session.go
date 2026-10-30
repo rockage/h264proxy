@@ -105,12 +105,14 @@ type Session struct {
 	feedbackCh chan *outFrame // ACK/WINDOW must not wait behind queued DATA
 
 	// metrics (atomic)
-	framesSent atomic.Uint64
-	framesRecv atomic.Uint64
-	bytesSent  atomic.Uint64
-	bytesRecv  atomic.Uint64
-	decodeFail atomic.Uint64
-	pacingRate atomic.Int64
+	framesSent         atomic.Uint64
+	framesRecv         atomic.Uint64
+	bytesSent          atomic.Uint64
+	bytesRecv          atomic.Uint64
+	decodeFail         atomic.Uint64
+	pacingRate         atomic.Int64
+	fastRetransmits    atomic.Uint64
+	timeoutRetransmits atomic.Uint64
 }
 
 // New builds a Session and starts its demux goroutine.
@@ -442,7 +444,7 @@ func (s *Session) sendAck(streamID uint32, ack *muxproto.Ack) {
 // maintain drives timer-based retransmission and periodic ACKs. One goroutine
 // per session scans every tick until the session closes.
 func (s *Session) maintain() {
-	const tick = 50 * time.Millisecond
+	const tick = maintenanceTick
 	t := time.NewTicker(tick)
 	defer t.Stop()
 	ticks := 0
@@ -524,9 +526,12 @@ type Stats struct {
 	DecodeFailures             uint64
 	DupChunks, ReorderChunks   uint64
 	Retransmits                uint64
+	FastRetransmits            uint64
+	TimeoutRetransmits         uint64
 	// RTO estimator snapshot (milliseconds).
-	SRTTMillis float64
-	RTOMillis  float64
+	SRTTMillis        float64
+	RTOMillis         float64
+	RecoveryRTOMillis float64
 	// Congestion controller snapshot.
 	CwndBytes      int64
 	MaxCwndBytes   int64
@@ -544,6 +549,8 @@ func (s *Session) Stats() Stats {
 		QueuedFeedbackFrames: len(s.feedbackCh),
 		InFlightBytes:        inFlight,
 		PacingBytesPerSec:    s.pacingRate.Load(),
+		FastRetransmits:      s.fastRetransmits.Load(),
+		TimeoutRetransmits:   s.timeoutRetransmits.Load(),
 		FramesSent:           s.framesSent.Load(),
 		FramesReceived:       s.framesRecv.Load(),
 		BytesSent:            s.bytesSent.Load(),
@@ -551,6 +558,7 @@ func (s *Session) Stats() Stats {
 		DecodeFailures:       s.decodeFail.Load(),
 		SRTTMillis:           float64(srtt) / float64(time.Millisecond),
 		RTOMillis:            float64(rto) / float64(time.Millisecond),
+		RecoveryRTOMillis:    float64(recoveryRTO(srtt, rto)) / float64(time.Millisecond),
 		CwndBytes:            cwnd,
 		MaxCwndBytes:         maxCwnd,
 		MinCwndBytes:         minCwnd,

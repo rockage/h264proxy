@@ -12,6 +12,30 @@ func TestRTTInitialRTO(t *testing.T) {
 	}
 }
 
+func TestRTTLeavesRoomForFeedbackScheduling(t *testing.T) {
+	e := newRTTEstimator()
+	for i := 0; i < 100; i++ {
+		e.sample(80 * time.Millisecond)
+	}
+	if got := e.RTO(); got < 80*time.Millisecond+maintenanceTick {
+		t.Fatalf("RTO=%v leaves no ACK scheduling margin", got)
+	}
+}
+
+func TestRecoveryRTOMarginAndBounds(t *testing.T) {
+	for _, c := range []struct{ srtt, estimate, want time.Duration }{
+		{0, initialRTO, initialRTO},
+		{10 * time.Millisecond, minRTO, minRTO},
+		{80 * time.Millisecond, 130 * time.Millisecond, 210 * time.Millisecond},
+		{80 * time.Millisecond, 500 * time.Millisecond, 500 * time.Millisecond},
+		{2 * time.Second, maxRTO, maxRTO},
+	} {
+		if got := recoveryRTO(c.srtt, c.estimate); got != c.want {
+			t.Fatalf("recoveryRTO(%v,%v)=%v want=%v", c.srtt, c.estimate, got, c.want)
+		}
+	}
+}
+
 func TestRTTFirstSample(t *testing.T) {
 	e := newRTTEstimator()
 	e.sample(40 * time.Millisecond)

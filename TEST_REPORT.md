@@ -363,3 +363,18 @@ ACK RTT sampling and premature fast retransmit on mild reordering. Full race
 tests, vet, builds and added transport regression tests passed. WAN A/B results,
 including rejected experiments and measurement limits, are recorded in
 [PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md).
+
+## RTP reordering and recovery guards — 2026-10-30
+
+The user selected mandatory H.264/RTP carriage. No DataChannel proxy backend
+was substituted. Added a pipelined WAN regression fixture: 80ms RTT, 900 KB/s,
+20ms reordering and no dropped packets reproduced 22 scheduled retransmits and
+21 window reductions for 1 MiB (10.84s). The corrected implementation completed
+in about 1.49s with zero retransmissions/loss events, in three consecutive race
+runs. Fresh full race tests, vet, builds and native Linux media/mux tests passed.
+
+Isolated real-WAN HTTPS returned HTTP 200 for 5 MB in 4.438s and 20 MB in
+18.938s, approximately 1.13/1.06 MB/s respectively. RTP sequence observations
+and separate ACK/timeout recovery counters were recorded. Detailed mechanisms,
+limits and comparisons are in [RTP_REORDER_FIX.md](RTP_REORDER_FIX.md). These
+results do not claim verified video playback or resistance to traffic analysis.

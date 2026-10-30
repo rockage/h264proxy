@@ -54,7 +54,8 @@ func (w *RTPWriter) WritePayload(payload []byte, marker bool) error {
 // RTPReader adapts a TrackRemote to the transfer.PacketSource interface. Each
 // payload is copied out of Pion's internal buffer so the caller may retain it.
 type RTPReader struct {
-	track *webrtc.TrackRemote
+	track    *webrtc.TrackRemote
+	sequence sequenceTracker
 }
 
 // NewRTPReader builds an RTPReader around a received track.
@@ -68,9 +69,19 @@ func (r *RTPReader) ReadPayload() ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	r.sequence.observe(pkt.SequenceNumber)
 	out := make([]byte, len(pkt.Payload))
 	copy(out, pkt.Payload)
 	return out, pkt.Header.Marker, nil
+}
+
+func (d *DeferredRTPReader) Stats() ReceiveStats {
+	select {
+	case <-d.ready:
+		return d.r.sequence.snapshot()
+	default:
+		return ReceiveStats{}
+	}
 }
 
 // DeferredRTPReader is a PacketSource whose underlying remote track is not

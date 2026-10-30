@@ -90,11 +90,14 @@ type Stream struct {
 	sendClosed  bool
 
 	// send side (reliability)
-	txmu        sync.Mutex
-	retx        map[uint64]*retxEntry
-	sendCumAck  uint64
-	retransmits uint64
-	txErr       error
+	txmu                   sync.Mutex
+	retx                   map[uint64]*retxEntry
+	sendCumAck             uint64
+	retransmits            uint64
+	txErr                  error
+	lastDeliveryRTT        time.Duration // latest unambiguous ACK, including queue variation
+	deliveryRTTHighWater   time.Duration // retained until outstanding flight drains
+	deliveryPeakObservedAt time.Time
 }
 
 func newStream(id uint32, sess *Session) *Stream {
@@ -301,7 +304,8 @@ func (s *Stream) txError() error {
 // onAck removes acknowledged frames and fast-retransmits still-missing ones.
 func (s *Stream) onAck(a *muxproto.Ack) {
 	now := time.Now()
-	srtt, _, _ := s.sess.rtt.snapshot()
+	srtt, _, lossBudget := s.sess.rtt.snapshot()
+	lossBudget = recoveryRTO(srtt, lossBudget)
 	var resend []*retxEntry
 	var newestSample time.Time
 	failed := false
@@ -326,15 +330,48 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 			}
 			ackedBytes += int64(e.dataLen)
 			delete(s.retx, seq)
-			continue
 		}
-		// Require three later sequence numbers as loss evidence. One later
-		// packet can simply be reordered; it must not halve the whole session's
-		// congestion window. Tail losses remain covered by the RTO timer.
-		wait := minRetxInterval
-		if e.tries > 1 && srtt > wait {
-			wait = srtt
+	}
+	var oldestOutstanding time.Time
+	for _, e := range s.retx {
+		if !e.firstSent.IsZero() && (oldestOutstanding.IsZero() || e.firstSent.Before(oldestOutstanding)) {
+			oldestOutstanding = e.firstSent
 		}
+	}
+	if !newestSample.IsZero() {
+		s.lastDeliveryRTT = now.Sub(newestSample)
+		if s.lastDeliveryRTT > s.deliveryRTTHighWater || oldestOutstanding.IsZero() || oldestOutstanding.After(s.deliveryPeakObservedAt) {
+			s.deliveryRTTHighWater = s.lastDeliveryRTT
+			s.deliveryPeakObservedAt = now
+		}
+	}
+	// Smoothed RTT lags a growing network queue. Include this ACK's actual
+	// timing before deciding that a gap represents loss, rather than reorder.
+	wait := srtt
+	if s.lastDeliveryRTT > wait {
+		wait = s.lastDeliveryRTT
+	}
+	// A draining queue makes newer ACKs faster while an older reordered
+	// packet still experienced the queue's peak delay. Do not forget that
+	// delay until the outstanding flight has drained.
+	if s.deliveryRTTHighWater > wait {
+		wait = s.deliveryRTTHighWater
+	}
+	if wait <= 0 {
+		wait = initialRTO
+	} else {
+		wait += maintenanceTick
+	}
+	if wait < minRetxInterval {
+		wait = minRetxInterval
+	}
+	// ACK-driven recovery must also respect measured RTT variation. A
+	// smoothed RTT alone can mistake an older, more deeply queued packet
+	// for a loss while newer packets have already seen the queue drain.
+	if lossBudget > wait {
+		wait = lossBudget
+	}
+	for seq, e := range s.retx {
 		if !e.queued && !e.lastSent.IsZero() && maxReported > seq && maxReported-seq > 3 && maxReported > e.fastAckHigh && now.Sub(e.lastSent) >= wait {
 			if e.tries >= maxRetries {
 				s.txErr = ErrPeerUnreachable
@@ -345,6 +382,10 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 			e.fastAckHigh = maxReported
 			e.tries++
 			s.retransmits++
+			s.sess.fastRetransmits.Add(1)
+			if s.sess.log != nil {
+				s.sess.log.Debug("fast_loss_decision", "stream_id", s.id, "seq", seq, "max_reported", maxReported, "age_ms", float64(now.Sub(e.lastSent))/float64(time.Millisecond), "wait_ms", float64(wait)/float64(time.Millisecond), "observed_rtt_ms", float64(s.lastDeliveryRTT)/float64(time.Millisecond), "srtt_ms", float64(srtt)/float64(time.Millisecond))
+			}
 			resend = append(resend, cloneEntry(e))
 		}
 	}
@@ -374,10 +415,14 @@ func (s *Stream) onAck(a *muxproto.Ack) {
 
 // retransmitDue resends frames whose RTO elapsed. Called by the session timer.
 func (s *Stream) retransmitDue(now time.Time) {
-	base := s.sess.rtt.RTO()
+	srtt, _, base := s.sess.rtt.snapshot()
+	base = recoveryRTO(srtt, base)
 	var resend []*retxEntry
 	failed := false
 	s.txmu.Lock()
+	if budget := s.deliveryRTTHighWater + maintenanceTick; budget > base {
+		base = clampRTO(budget)
+	}
 	for _, e := range s.retx {
 		if e.queued || e.lastSent.IsZero() {
 			continue
@@ -393,6 +438,7 @@ func (s *Stream) retransmitDue(now time.Time) {
 		e.queued = true
 		e.tries++
 		s.retransmits++
+		s.sess.timeoutRetransmits.Add(1)
 		resend = append(resend, cloneEntry(e))
 	}
 	s.txmu.Unlock()

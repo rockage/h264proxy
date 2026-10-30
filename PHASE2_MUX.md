@@ -92,15 +92,20 @@ the loop converge.
 
 **Adaptive RTO.** The timeout is not fixed. A per-path (per-session) estimator
 follows Jacobson/Karels (RFC 6298): `SRTT = 7/8·SRTT + 1/8·R`,
-`RTTVAR = 3/4·RTTVAR + 1/4·|SRTT−R|`, `RTO = SRTT + 4·RTTVAR`, clamped to
+`RTTVAR = 3/4·RTTVAR + 1/4·|SRTT−R|`, `RTO = SRTT + max(4·RTTVAR, G)`, with
+`G = 50ms` matching ACK/maintenance scheduling, clamped to
 [100 ms, 2 s] with a 250 ms initial value. RTT samples R are taken only from
 frames acknowledged without ever being retransmitted (Karn's algorithm), so an
 ambiguous sample never corrupts the estimate. Each frame additionally backs off
 exponentially by its own retry count (`RTO << min(tries−1, 4)`), so a
 repeatedly-lost frame is retried less aggressively while fresh samples keep the
-base RTO tracking the path. SRTT here reflects end-to-end ACK latency (including
-local send-queue delay), which is exactly what the retransmit timer should
-cover. The current SRTT/RTO are reported by `muxnode`.
+base RTO tracking the path. Timing starts when the writer attempts a packet
+send, excluding residence in the application send queue. Recovery also leaves
+one additional feedback round plus the maintenance tick (`2*SRTT + 50ms`,
+bounded by the same limits), and retains an older flight's queue-delay budget
+until that flight drains. Repeated selective ACKs cannot repeatedly reschedule
+the same queued frame. See `RTP_REORDER_FIX.md` for regression evidence. The
+current base and recovery RTO are exposed in transport statistics.
 
 ### Congestion control — AIMD
 A session-level controller (TCP Reno style) bounds the bytes in flight across

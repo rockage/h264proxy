@@ -131,3 +131,10 @@ it requires continued work on the reliable media transport. Prioritizing speed
 allows a separate DataChannel proxy backend, but that changes the carrier and
 must not be described as H.264-video payload transport. No carrier switch has
 been made here.
+
+
+## Decision and follow-up
+
+The user selected mandatory H.264/RTP carriage. No DataChannel proxy backend
+will be substituted. Continued RTP recovery work and subsequent test results
+are documented in [RTP_REORDER_FIX.md](RTP_REORDER_FIX.md).

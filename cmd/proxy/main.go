@@ -91,7 +91,7 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 	}
 	defer peer.Close()
 	if statsInterval > 0 {
-		go logTransportStats(ctx, peer.Session, cfg.Log, statsInterval)
+		go logTransportStats(ctx, peer, cfg.Log, statsInterval)
 	}
 	if report != "" {
 		defer func() {
@@ -132,7 +132,8 @@ func run(ctx context.Context, role, socksAddr, keyPath, report string, setup tim
 	return err
 }
 
-func logTransportStats(ctx context.Context, sess *mux.Session, log *logging.Logger, interval time.Duration) {
+func logTransportStats(ctx context.Context, peer *tunnel.Peer, log *logging.Logger, interval time.Duration) {
+	sess := peer.Session
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -142,7 +143,7 @@ func logTransportStats(ctx context.Context, sess *mux.Session, log *logging.Logg
 		case <-sess.Closed():
 			return
 		case <-ticker.C:
-			log.Info("mux_stats", "stats", sess.Stats())
+			log.Info("mux_stats", "stats", sess.Stats(), "rtp_receive", peer.ReceiveStats())
 		}
 	}
 }
