@@ -72,6 +72,73 @@ The TUN comparison script forwards all three client settings and records them
 in `transport_parameters`. Resume refuses a parameter change. That script still
 compares TUN frontends; it does not automate gateway parameter trials.
 
+## Deploy the gateway sending-buffer trial
+
+The receive-window refactor already exists in `581f737`; this deployment enables
+the next independent change on the **sending gateway**, not in the TUN frontend.
+
+```bash
+# Build for the configured VPS architecture; verify candidate and current unit.
+bash scripts/deploy_transport.sh --check
+
+# Back up, replace atomically, set send high/low to 1 MiB / 512 KiB, restart.
+bash scripts/deploy_transport.sh
+```
+
+The launcher uses the explicit SSH target from `build/client.env`. It does not
+run the full installer, overwrite ICE settings or touch firewall/shared keys.
+The remote updater preserves unrelated EnvironmentFile lines and file metadata,
+and stores the original binary/environment under
+`/opt/h264proxy/backups/transport-TIMESTAMP-ID/`. Startup failure restores both
+files and restarts the previous gateway. Successful deployment verifies the
+running executable hash, inherited thresholds and two TCP listeners. Actual
+SOCKS/DNS forwarding and performance must be verified after reconnecting the
+client; listener readiness alone is not an end-to-end throughput test.
+
+The service restart closes the old client session. Reconnect with the client
+receive-window-only command above, retaining 1 MiB receive capacity and its
+default sending thresholds. `transport_tuning` and subsequent `mux_stats` in
+the gateway journal then show the effective sending buffer and waiting counters.
+
+To reverse a successful trial, restore **both** the original binary and
+`gateway.env` from that deployment's backup while the service is stopped,
+restore SELinux labels if enabled, and restart the service. Keep the backup
+until real-network checks pass; automatic rollback covers startup validation,
+not a later performance regression.
+
+## 4K60 playback checkpoint — 2026-10-31
+
+The following explicit configuration reached 3840x2160 at 60 fps in the user's
+YouTube playback observation after deploying the gateway trial:
+
+| Component | Setting |
+|---|---|
+| Frontend / carrier | sing-box / existing ordered WebRTC ICE-TCP |
+| Gateway sending high / low | 1048576 / 524288 bytes |
+| Client receive window | 1048576 bytes |
+| Client sending high / low | unchanged: 262144 / 65536 bytes |
+| Gateway receive window | unchanged: 262144 bytes |
+
+Start the client with:
+
+```bash
+H264_STREAM_RECEIVE_WINDOW=1048576 H264_TUN_SERVICE=Wi-Fi \
+  bash scripts/start_proxy.sh --sing-box
+```
+
+The screenshot showed estimated connection speed 70,519 Kbps, buffer 4.86 s
+and 84 dropped frames out of 2,163. This is a playback observation, not a
+controlled sustained-throughput measurement or proof of long-duration stability.
+Retain this configuration for stability checks before further window tuning.
+The code defaults remain unchanged; reproducing the checkpoint requires these
+explicit client and gateway settings.
+
+The active 207.148.110.180 gateway binary was verified as SHA256
+`63f8f1c7a88671f18a07a5aa1df859700a6f30200959b73df35e14de5863d093`.
+The prior binary and environment are backed up at
+`/opt/h264proxy/backups/transport-20261030T181741Z-513560f2/`.
+The local deployment log is `build/logs/transport-deploy-1m.log`.
+
 ## Counters in mux_stats
 
 `datachannel`:
