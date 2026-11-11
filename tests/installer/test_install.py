@@ -50,7 +50,14 @@ if name == 'curl':
         binary = root / 'opt/bin/proxy'
         is_new = binary.exists() and 'binary-version:v2' in binary.read_text()
         if not s.get('active') or (s.get('fail_health') and is_new): done(22)
-        data = json.dumps({'sdp': {'type':'offer', 'sdp':'m=video 9 UDP/TLS/RTP/SAVPF 96\na=rtpmap:96 H264/90000'}}).encode()
+        if not url.endswith('/offer'): done(22, 'unexpected health check endpoint')
+        data = json.dumps({
+            'transport': 'datachannel-v1',
+            'sdp': {
+                'type': 'offer',
+                'sdp': 'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=sctp-port:5000\r\n',
+            },
+        }).encode()
     elif 'api.ipify.org' in url or 'icanhazip.com' in url: data = b'8.8.8.8'
     elif '/commits/' in url: data = json.dumps({'sha': 'a' * 40}).encode()
     elif 'codeload.github.com' in url: data = (root / 'source.tar.gz').read_bytes()
