@@ -1,3 +1,17 @@
+## 服务器一键安装
+
+在 **Linux VPS（systemd，amd64 / arm64）** 上以 root 执行下面的命令。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh | bash
+```
+
+普通管理员账号把末尾的 `bash` 改成 `sudo bash`。脚本会检测公网 IPv4，在 VPS 上编译网关，配置 systemd 开机自启。首次安装会生成共享密钥，重装会保留现有密钥并重启网关。安装成功后会显示连接地址、密钥路径和服务状态命令。
+
+默认使用 **9300/TCP（信令）和 9300/UDP（WebRTC 传输）**。如果 VPS 有云防火墙或安全组，请在服务商控制台放行这两个端口。这个版本的网关同时服务一个客户端，断线后需由客户端重新连接。
+
+[查看安装脚本](install.sh) · [自定义 IP 和端口、连接客户端、升级与回滚](INSTALL.md)
+
 ## 项目简介
 **H264 Proxy** 是一款基于 Go 开发的跨平台网络代理系统，底层集成 sing-box，负责 TUN 网络接管、SOCKS 代理及智能分流。核心传输层基于 WebRTC，利用预编码低码率 H.264 视频作为数据载体，将真实网络数据封装、嵌入视频码流，并在服务端提取、重组和转发。系统采用客户端/服务端架构，将视频隐写、传输控制与网络代理模块解耦，支持 macOS 与 Windows。项目致力于在维持有效视频流特征的同时，实现高吞吐、低延迟及可靠传输，并通过实测验证流量伪装效果。
 
@@ -8,30 +22,6 @@
 其中，H.264 载荷嵌入与可解码性、WebRTC 传输兼容性以及实际流量抗识别能力是需要重点验证的技术环节，不能仅凭流量采用 WebRTC 就认定已实现有效伪装。
 
 # H264TunnelLab
-
-## Install the gateway on a Linux VPS
-
-Run as root on a Linux **systemd** server (amd64 or arm64):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh | bash
-```
-
-For a regular administrator account, pipe to `sudo bash` instead. The installer
-detects the public IPv4, builds natively, installs/reuses Go, preserves existing
-keys, configures a systemd service and opens **9300/TCP + 9300/UDP** in an active
-firewalld/UFW. Allow both protocols in your cloud security group too.
-
-Custom address/port:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rockage/h264proxy/main/install.sh \
-  | bash -s -- --public-ip YOUR_PUBLIC_IPV4 --port 9300
-```
-
-See **[INSTALL.md](INSTALL.md)** for supported systems, updates, rollback,
-firewall behavior, key retrieval and client connection instructions. This is a
-single-client TCP gateway; installing it does not add automatic client reconnect.
 
 The production `cmd/proxy` now uses a **reliable, ordered WebRTC DataChannel**
 (SCTP over DTLS over ICE/UDP). It does not create a video track or carry proxy
